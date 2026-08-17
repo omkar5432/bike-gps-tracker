@@ -84,3 +84,10 @@ class DeviceService:
         db.commit()
         db.refresh(device)
         return device
+
+    @staticmethod
+    def delete_device(db: Session, device_id: str, user_id: str) -> None:
+        """Permanently delete a device and cascade-delete its locations, trips, geofences, and alerts."""
+        device = DeviceService.get_user_device_by_id(db, device_id, user_id)
+        db.delete(device)
+        db.commit()

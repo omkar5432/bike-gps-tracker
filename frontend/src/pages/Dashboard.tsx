@@ -216,6 +216,17 @@ export default function Dashboard() {
     [selectedDevice?.device_id, clearDeviceData]
   )
 
+  const handleDeviceDeleted = useCallback(
+    (deletedDeviceId: string) => {
+      if (selectedDevice?.device_id === deletedDeviceId) {
+        clearDeviceData()
+        setSelectedDevice(null)
+        localStorage.removeItem(SELECTED_DEVICE_STORAGE_KEY)
+      }
+    },
+    [selectedDevice?.device_id, clearDeviceData]
+  )
+
   const handleDevicesLoaded = useCallback(
     (devices: Device[]) => {
       if (restoredRef.current) return
@@ -447,6 +458,7 @@ export default function Dashboard() {
             selectedDevice={selectedDevice}
             onDeviceSelect={handleDeviceSelect}
             onDevicesLoaded={handleDevicesLoaded}
+            onDeviceDeleted={handleDeviceDeleted}
           />
         </div>
 

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { fetchDevices } from '../services/api'
+import { fetchDevices, deleteDevice } from '../services/api'
 import type { Device } from '../types/device'
 
 interface DeviceListProps {
   selectedDevice: Device | null
   onDeviceSelect: (device: Device) => void
   onDevicesLoaded?: (devices: Device[]) => void
+  onDeviceDeleted?: (deviceId: string) => void
 }
 
 function statusColor(status: string): string {
@@ -25,10 +26,12 @@ export default function DeviceList({
   selectedDevice,
   onDeviceSelect,
   onDevicesLoaded,
+  onDeviceDeleted,
 }: DeviceListProps) {
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   useEffect(() => {
     loadDevices()
@@ -45,6 +48,27 @@ export default function DeviceList({
       setError(err instanceof Error ? err.message : 'Failed to load devices')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDelete = async (e: React.MouseEvent, device: Device) => {
+    e.stopPropagation()
+    const confirmMessage = `Are you sure you want to delete device "${device.name || device.device_id}"?\n\nThis will permanently remove all associated location history, trips, geofences, and alerts.`
+    if (!window.confirm(confirmMessage)) {
+      return
+    }
+
+    try {
+      setDeletingId(device.device_id)
+      setError(null)
+      await deleteDevice(device.device_id)
+      const updated = devices.filter((d) => d.device_id !== device.device_id)
+      setDevices(updated)
+      onDeviceDeleted?.(device.device_id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete device')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -80,7 +104,7 @@ export default function DeviceList({
   if (devices.length === 0) {
     return (
       <div style={{ padding: '1rem' }}>
-        <div>No devices registered yet.</div>
+        <div style={{ color: '#666', fontSize: '0.9rem' }}>No devices registered yet. Click "+ Add Device" above to register one.</div>
       </div>
     )
   }
@@ -98,9 +122,10 @@ export default function DeviceList({
               backgroundColor: selectedDevice?.id === device.id ? '#e3f2fd' : 'white',
               border:
                 selectedDevice?.id === device.id ? '1px solid #90caf9' : '1px solid #ddd',
-              borderRadius: '4px',
+              borderRadius: '6px',
               cursor: 'pointer',
-              transition: 'background-color 0.2s',
+              transition: 'all 0.2s',
+              position: 'relative',
             }}
             onMouseEnter={(e) => {
               if (selectedDevice?.id !== device.id) {
@@ -113,8 +138,34 @@ export default function DeviceList({
               }
             }}
           >
-            <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
-              {device.name || device.device_id}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '1rem', color: '#222' }}>
+                {device.name || device.device_id}
+              </div>
+              <button
+                onClick={(e) => handleDelete(e, device)}
+                disabled={deletingId === device.device_id}
+                title="Delete device"
+                style={{
+                  backgroundColor: '#fee2e2',
+                  color: '#dc2626',
+                  border: '1px solid #fca5a5',
+                  borderRadius: '4px',
+                  padding: '0.2rem 0.5rem',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: deletingId === device.device_id ? 'not-allowed' : 'pointer',
+                  transition: 'background-color 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#fecaca'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#fee2e2'
+                }}
+              >
+                {deletingId === device.device_id ? 'Deleting...' : '🗑️ Delete'}
+              </button>
             </div>
             <div style={{ fontSize: '0.875rem', color: '#666' }}>ID: {device.device_id}</div>
             <div
@@ -125,11 +176,11 @@ export default function DeviceList({
                 fontWeight: 600,
               }}
             >
-              {device.status}
+              ● {device.status}
             </div>
             <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.25rem' }}>
               Last seen:{' '}
-              {device.last_seen ? new Date(device.last_seen).toLocaleString() : 'N/A'}
+              {device.last_seen ? new Date(device.last_seen).toLocaleString() : 'Never'}
             </div>
           </div>
         ))}
@@ -137,3 +188,4 @@ export default function DeviceList({
     </div>
   )
 }
+

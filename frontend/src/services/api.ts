@@ -87,6 +87,13 @@ export async function registerDevice(deviceData: {
   return handleJsonResponse(response, 'Failed to register device')
 }
 
+export async function deleteDevice(deviceId: string): Promise<{ status: string; message: string }> {
+  const response = await apiFetch(`/api/v1/devices/${encodeURIComponent(deviceId)}`, {
+    method: 'DELETE',
+  })
+  return handleJsonResponse(response, 'Failed to delete device')
+}
+
 // Location & Trip Endpoints
 export async function fetchLocationHistory(
   deviceId: string,

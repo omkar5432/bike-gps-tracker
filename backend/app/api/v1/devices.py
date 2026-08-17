@@ -67,7 +67,20 @@ async def deactivate_device(
     device = DeviceService.deactivate_device(db, device_id, user_id)
     invalidate_device_auth_cache(device_id)
     return device
-
+@router.delete(
+    "/{device_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Permanently delete a device"
+)
+async def delete_device(
+    device_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """Permanently delete a device and its history owned by the authenticated user."""
+    DeviceService.delete_device(db, device_id, user_id)
+    invalidate_device_auth_cache(device_id)
+    return {"status": "success", "message": f"Device '{device_id}' deleted successfully"}
 @router.post(
     "/auth/verify",
     summary="Verify device credentials"
