@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import type { Geofence, GeofenceCreate } from '../types/geofence'
 import type { Location } from '../types/location'
 import {
@@ -7,6 +7,7 @@ import {
   enableGeofence,
   disableGeofence,
 } from '../services/api'
+import { ShieldIcon, PlusIcon, RefreshIcon, TrashIcon, CrosshairIcon } from './Icons'
 
 interface GeofencePanelProps {
   deviceId: string | undefined
@@ -91,7 +92,6 @@ export default function GeofencePanel({
       setFormLat('')
       setFormLon('')
       setFormRadius('300')
-      setFormEnabled(true)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to create geofence.')
     } finally {
@@ -103,7 +103,6 @@ export default function GeofencePanel({
     if (!deviceId) return
     setActionLoadingId(geo.id)
     setActionError(null)
-
     try {
       let updated: Geofence
       if (geo.enabled) {
@@ -121,11 +120,10 @@ export default function GeofencePanel({
 
   const handleDelete = async (geofenceId: number) => {
     if (!deviceId) return
-    if (!window.confirm('Are you sure you want to delete this geofence?')) return
+    if (!window.confirm('Delete this geofence? Safe zone tracking will stop immediately.')) return
 
     setActionLoadingId(geofenceId)
     setActionError(null)
-
     try {
       await deleteGeofence(deviceId, geofenceId)
       onGeofenceDeleted(geofenceId)
@@ -146,43 +144,29 @@ export default function GeofencePanel({
           marginBottom: '0.75rem',
         }}
       >
-        <h2 style={{ margin: 0, fontSize: '1.1rem' }}>
-          Geofences ({geofences.length})
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Safe Zones / Geofences ({geofences.length})
+          </h3>
+        </div>
+
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button
-            onClick={() => {
-              setShowAddForm(!showAddForm)
-              if (!showAddForm && currentLocation && !formLat && !formLon) {
-                setFormLat(currentLocation.latitude.toFixed(6))
-                setFormLon(currentLocation.longitude.toFixed(6))
-              }
-            }}
-            style={{
-              padding: '0.35rem 0.75rem',
-              border: 'none',
-              borderRadius: '4px',
-              backgroundColor: showAddForm ? '#6c757d' : '#28a745',
-              color: 'white',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-            }}
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="btn-primary"
+            style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
           >
-            {showAddForm ? 'Cancel' : '+ New Geofence'}
+            <PlusIcon size={14} />
+            <span>{showAddForm ? 'Cancel' : 'New Zone'}</span>
           </button>
           <button
             onClick={onRefresh}
             disabled={loading}
-            style={{
-              padding: '0.35rem 0.75rem',
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-              backgroundColor: loading ? '#eee' : 'white',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: '0.85rem',
-            }}
+            className="btn-secondary"
+            style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
           >
-            {loading ? 'Loading...' : 'Refresh'}
+            <RefreshIcon size={14} />
+            <span>Refresh</span>
           </button>
         </div>
       </div>
@@ -190,176 +174,181 @@ export default function GeofencePanel({
       {(error || actionError) && (
         <div
           style={{
-            backgroundColor: '#f8d7da',
-            color: '#721c24',
+            backgroundColor: '#fef2f2',
+            color: '#dc2626',
+            border: '1px solid #fecaca',
             padding: '0.5rem 0.75rem',
-            borderRadius: '4px',
+            borderRadius: 'var(--radius-md)',
             marginBottom: '0.75rem',
-            fontSize: '0.875rem',
+            fontSize: '0.8rem',
           }}
         >
           {error || actionError}
         </div>
       )}
 
+      {/* Geofence Create Form Modal/Drawer */}
       {showAddForm && (
-        <form
-          onSubmit={handleCreate}
+        <div
           style={{
-            backgroundColor: '#f8f9fa',
-            border: '1px solid #dee2e6',
-            borderRadius: '6px',
+            backgroundColor: '#ffffff',
+            border: '1.5px solid #bfdbfe',
+            borderRadius: 'var(--radius-md)',
             padding: '1rem',
             marginBottom: '1rem',
+            boxShadow: 'var(--shadow-md)',
           }}
         >
-          <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem' }}>Create New Geofence</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div style={{ gridColumn: 'span 2' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.2rem' }}>
-                Name
+          <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', fontWeight: 700, color: '#1e40af' }}>
+            ➕ Create Circular Safe Zone
+          </h4>
+
+          <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>
+                Zone Label (e.g. Home Garage, Office, Parking)
               </label>
               <input
                 type="text"
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
-                placeholder="e.g. Home, Office, Garage"
+                placeholder="Zone name..."
                 required
                 style={{
                   width: '100%',
-                  padding: '0.4rem',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px',
-                  boxSizing: 'border-box',
+                  padding: '0.4rem 0.6rem',
+                  border: '1px solid var(--border-strong)',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.85rem',
                 }}
               />
             </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.2rem' }}>
-                Latitude
-              </label>
-              <input
-                type="number"
-                step="any"
-                value={formLat}
-                onChange={(e) => setFormLat(e.target.value)}
-                placeholder="e.g. 18.520430"
-                required
-                style={{
-                  width: '100%',
-                  padding: '0.4rem',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.2rem' }}>
-                Longitude
-              </label>
-              <input
-                type="number"
-                step="any"
-                value={formLon}
-                onChange={(e) => setFormLon(e.target.value)}
-                placeholder="e.g. 73.856744"
-                required
-                style={{
-                  width: '100%',
-                  padding: '0.4rem',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.2rem' }}>
-                Radius (meters)
-              </label>
-              <input
-                type="number"
-                step="1"
-                min="1"
-                value={formRadius}
-                onChange={(e) => setFormRadius(e.target.value)}
-                placeholder="e.g. 300"
-                required
-                style={{
-                  width: '100%',
-                  padding: '0.4rem',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', paddingTop: '1.2rem' }}>
-              <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={formEnabled}
-                  onChange={(e) => setFormEnabled(e.target.checked)}
-                  style={{ marginRight: '0.4rem' }}
-                />
-                Active immediately
-              </label>
-            </div>
-          </div>
 
-          <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>
+                  Center Latitude
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={formLat}
+                  onChange={(e) => setFormLat(e.target.value)}
+                  placeholder="18.520430"
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '0.4rem 0.6rem',
+                    border: '1px solid var(--border-strong)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.85rem',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>
+                  Center Longitude
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={formLon}
+                  onChange={(e) => setFormLon(e.target.value)}
+                  placeholder="73.856744"
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '0.4rem 0.6rem',
+                    border: '1px solid var(--border-strong)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.85rem',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                />
+              </div>
+            </div>
+
             {currentLocation && (
               <button
                 type="button"
                 onClick={handleUseCurrentGPS}
-                style={{
-                  padding: '0.35rem 0.75rem',
-                  backgroundColor: '#17a2b8',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.8rem',
-                }}
+                className="btn-secondary"
+                style={{ alignSelf: 'flex-start', padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
               >
-                📍 Use Current GPS
+                <CrosshairIcon size={14} />
+                <span>Use Bike's Current Location</span>
               </button>
             )}
-            <button
-              type="submit"
-              disabled={formSubmitting}
-              style={{
-                padding: '0.35rem 0.75rem',
-                backgroundColor: '#007bff',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: formSubmitting ? 'not-allowed' : 'pointer',
-                fontSize: '0.8rem',
-                marginLeft: 'auto',
-              }}
-            >
-              {formSubmitting ? 'Saving...' : 'Save Geofence'}
-            </button>
-          </div>
-        </form>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>
+                Radius: <strong style={{ color: 'var(--text-primary)' }}>{formRadius} meters</strong>
+              </label>
+              <input
+                type="range"
+                min="50"
+                max="2000"
+                step="50"
+                value={formRadius}
+                onChange={(e) => setFormRadius(e.target.value)}
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
+              <input
+                type="checkbox"
+                id="geoEnabledCheck"
+                checked={formEnabled}
+                onChange={(e) => setFormEnabled(e.target.checked)}
+              />
+              <label htmlFor="geoEnabledCheck" style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
+                Enable monitoring immediately
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <button
+                type="submit"
+                disabled={formSubmitting}
+                className="btn-primary"
+                style={{ flex: 1, padding: '0.45rem', fontSize: '0.8rem' }}
+              >
+                {formSubmitting ? 'Saving...' : 'Save Geofence'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddForm(false)}
+                className="btn-secondary"
+                style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
       )}
 
       {loading && geofences.length === 0 ? (
-        <div style={{ color: '#666', fontSize: '0.875rem' }}>Loading geofences...</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div className="skeleton" style={{ height: '60px' }} />
+          <div className="skeleton" style={{ height: '60px' }} />
+        </div>
       ) : geofences.length === 0 ? (
         <div
           style={{
-            backgroundColor: '#f9f9f9',
+            backgroundColor: '#f8fafc',
+            border: '1px dashed var(--border-strong)',
             padding: '1.5rem',
-            borderRadius: '4px',
-            color: '#666',
+            borderRadius: 'var(--radius-md)',
+            color: 'var(--text-secondary)',
             textAlign: 'center',
-            fontSize: '0.875rem',
+            fontSize: '0.85rem',
           }}
         >
-          No geofences created yet. Click <strong>+ New Geofence</strong> to create a circular safe zone.
+          No active geofences. Click <strong>+ New Zone</strong> to create safe boundary alerts.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -372,11 +361,12 @@ export default function GeofencePanel({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '0.6rem 0.75rem',
-                  border: '1px solid #e9ecef',
-                  borderRadius: '6px',
-                  backgroundColor: geo.enabled ? '#ffffff' : '#f8f9fa',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                  padding: '0.65rem 0.85rem',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: geo.enabled ? '#ffffff' : '#f8fafc',
+                  opacity: geo.enabled ? 1 : 0.8,
+                  transition: 'all var(--transition-fast)',
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -386,35 +376,36 @@ export default function GeofencePanel({
                         width: 8,
                         height: 8,
                         borderRadius: '50%',
-                        backgroundColor: geo.enabled ? '#28a745' : '#6c757d',
+                        backgroundColor: geo.enabled ? 'var(--status-online)' : 'var(--status-offline)',
                         display: 'inline-block',
                       }}
                     />
-                    <strong style={{ fontSize: '0.9rem', color: geo.enabled ? '#212529' : '#6c757d' }}>
+                    <strong style={{ fontSize: '0.85rem', color: geo.enabled ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
                       {geo.name}
                     </strong>
                     <span
                       style={{
-                        fontSize: '0.75rem',
+                        fontSize: '0.7rem',
                         padding: '0.1rem 0.4rem',
-                        borderRadius: '3px',
-                        backgroundColor: geo.enabled ? '#e8f5e9' : '#eceff1',
-                        color: geo.enabled ? '#2e7d32' : '#546e7a',
-                        fontWeight: 600,
+                        borderRadius: 'var(--radius-sm)',
+                        backgroundColor: geo.enabled ? '#ecfdf5' : '#f1f5f9',
+                        color: geo.enabled ? '#059669' : '#64748b',
+                        fontWeight: 700,
                       }}
                     >
                       {geo.radius}m
                     </span>
                   </div>
+
                   <div
                     style={{
                       fontSize: '0.75rem',
-                      color: '#6c757d',
-                      fontFamily: 'monospace',
+                      color: 'var(--text-muted)',
+                      fontFamily: 'var(--font-mono)',
                       marginTop: '0.2rem',
                     }}
                   >
-                    Center: {geo.latitude.toFixed(6)}, {geo.longitude.toFixed(6)}
+                    📍 {geo.latitude.toFixed(5)}, {geo.longitude.toFixed(5)}
                   </div>
                 </div>
 
@@ -425,29 +416,25 @@ export default function GeofencePanel({
                     style={{
                       padding: '0.25rem 0.6rem',
                       fontSize: '0.75rem',
-                      borderRadius: '4px',
-                      border: '1px solid #ccc',
-                      backgroundColor: geo.enabled ? '#fff3cd' : '#d4edda',
-                      color: geo.enabled ? '#856404' : '#155724',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border-strong)',
+                      backgroundColor: geo.enabled ? '#fffbeb' : '#ecfdf5',
+                      color: geo.enabled ? '#b45309' : '#047857',
                       cursor: isActing ? 'not-allowed' : 'pointer',
+                      fontWeight: 600,
                     }}
                   >
                     {isActing ? '...' : geo.enabled ? 'Disable' : 'Enable'}
                   </button>
+
                   <button
                     onClick={() => handleDelete(geo.id)}
                     disabled={isActing}
-                    style={{
-                      padding: '0.25rem 0.6rem',
-                      fontSize: '0.75rem',
-                      borderRadius: '4px',
-                      border: 'none',
-                      backgroundColor: '#dc3545',
-                      color: 'white',
-                      cursor: isActing ? 'not-allowed' : 'pointer',
-                    }}
+                    className="btn-danger"
+                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                    title="Delete Geofence"
                   >
-                    Delete
+                    <TrashIcon size={12} />
                   </button>
                 </div>
               </div>

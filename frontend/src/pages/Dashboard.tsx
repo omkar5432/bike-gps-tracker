@@ -8,6 +8,8 @@ import TripHistoryPanel from '../components/TripHistoryPanel'
 import GeofencePanel from '../components/GeofencePanel'
 import AlertsPanel from '../components/AlertsPanel'
 import DeviceRegistration from '../components/DeviceRegistration'
+import { HeroStatus } from '../components/HeroStatus'
+import { MetricCards } from '../components/MetricCards'
 import { useDeviceWebSocket } from '../hooks/useDeviceWebSocket'
 import {
   fetchDevice,
@@ -22,6 +24,18 @@ import type { Device } from '../types/device'
 import type { Location, Trip, TripSummary } from '../types/location'
 import type { Geofence } from '../types/geofence'
 import type { Alert } from '../types/alert'
+import {
+  BikeIcon,
+  RadioIcon,
+  SpeedometerIcon,
+  RouteIcon,
+  ShieldIcon,
+  AlertTriangleIcon,
+  LogOutIcon,
+  MenuIcon,
+  CloseIcon,
+  ClockIcon,
+} from '../components/Icons'
 
 const SELECTED_DEVICE_STORAGE_KEY = 'bike_gps_selected_device_id'
 const HISTORY_LIMIT = 100
@@ -36,6 +50,7 @@ export default function Dashboard() {
   const [showRegistration, setShowRegistration] = useState(false)
   const [deviceListKey, setDeviceListKey] = useState(0)
   const [activeTab, setActiveTab] = useState<ActiveTab>('telemetry')
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   // History & Trips
   const [history, setHistory] = useState<Location[]>([])
@@ -174,23 +189,27 @@ export default function Dashboard() {
   const handleSelectTrip = useCallback(
     async (trip: Trip) => {
       if (!selectedDevice) return
+      if (selectedTrip?.id === trip.id) {
+        setSelectedTrip(null)
+        setSelectedTripRoute(null)
+        return
+      }
+
       setSelectedTrip(trip)
       try {
         const route = await fetchTripRoute(selectedDevice.device_id, trip.id)
         setSelectedTripRoute(route)
       } catch (err) {
         setPanelError(err instanceof Error ? err.message : 'Failed to load trip route')
-        setSelectedTripRoute([])
       }
     },
-    [selectedDevice]
+    [selectedDevice, selectedTrip]
   )
 
   const handleClearSelectedTrip = useCallback(() => {
     setSelectedTrip(null)
     setSelectedTripRoute(null)
   }, [])
-
 
   const refreshDeviceMeta = useCallback(async (deviceId: string) => {
     try {
@@ -199,18 +218,20 @@ export default function Dashboard() {
         prev && prev.device_id === deviceId ? { ...prev, ...fresh } : prev
       )
     } catch {
-      // Non-fatal: keep existing device info
+      // Non-fatal
     }
   }, [])
 
   const handleDeviceSelect = useCallback(
     (device: Device) => {
       if (selectedDevice?.device_id === device.device_id) {
+        setMobileSidebarOpen(false)
         return
       }
       clearDeviceData()
       setSelectedDevice(device)
       setPanelError(null)
+      setMobileSidebarOpen(false)
       localStorage.setItem(SELECTED_DEVICE_STORAGE_KEY, device.device_id)
     },
     [selectedDevice?.device_id, clearDeviceData]
@@ -248,68 +269,40 @@ export default function Dashboard() {
     []
   )
 
-  // Load all device details when device changes
   useEffect(() => {
-    if (!selectedDevice) {
-      clearDeviceData()
-      return
-    }
+    if (!selectedDevice) return
+    const deviceId = selectedDevice.device_id
+    refreshDeviceMeta(deviceId)
+    loadHistory(deviceId)
+    loadTrips(deviceId)
+    loadGeofences(deviceId)
+    loadAlerts(deviceId)
+  }, [selectedDevice?.device_id, refreshDeviceMeta, loadHistory, loadTrips, loadGeofences, loadAlerts])
 
-    const id = selectedDevice.device_id
-    loadHistory(id)
-    loadTrips(id)
-    loadGeofences(id)
-    loadAlerts(id)
-    refreshDeviceMeta(id)
-  }, [
-    selectedDevice?.device_id,
-    loadHistory,
-    loadTrips,
-    loadGeofences,
-    loadAlerts,
-    refreshDeviceMeta,
-    clearDeviceData,
-  ])
+  const handleRefreshAll = () => {
+    if (!selectedDevice) return
+    const deviceId = selectedDevice.device_id
+    refreshDeviceMeta(deviceId)
+    loadHistory(deviceId)
+    loadTrips(deviceId)
+    loadGeofences(deviceId)
+    loadAlerts(deviceId)
+  }
 
-  // Merge live updates into history route (newest-first list)
-  useEffect(() => {
-    if (!location || !selectedDevice) return
-    if (location.device_id !== selectedDevice.device_id) return
-
-    setHistory((prev) => {
-      if (prev.some((p) => p.id === location.id)) {
-        return prev
-      }
-      return [location, ...prev].slice(0, HISTORY_LIMIT)
-    })
-
-    setSelectedDevice((prev) =>
-      prev
-        ? {
-            ...prev,
-            status: 'ONLINE',
-            last_seen: location.timestamp,
-          }
-        : prev
-    )
-  }, [location, selectedDevice?.device_id])
+  const routePoints = history
 
   const handleRegistrationSuccess = () => {
-    setDeviceListKey((prev) => prev + 1)
     setShowRegistration(false)
-    restoredRef.current = false
+    setDeviceListKey((k) => k + 1)
   }
 
   const handleLogout = async () => {
     disconnect()
-    clearDeviceData()
-    setSelectedDevice(null)
-    localStorage.removeItem(SELECTED_DEVICE_STORAGE_KEY)
     await signOut()
   }
 
   const handleGeofenceCreated = (newGeo: Geofence) => {
-    setGeofences((prev) => [...prev, newGeo])
+    setGeofences((prev) => [newGeo, ...prev])
   }
 
   const handleGeofenceUpdated = (updatedGeo: Geofence) => {
@@ -332,36 +325,160 @@ export default function Dashboard() {
     )
   }
 
-  const unackedAlertsCount = alerts.filter((a) => !a.acknowledged).length
-  const routePoints = history
+  const unackedAlertCount = alerts.filter((a) => !a.acknowledged).length
+
+  const getWsBadge = () => {
+    switch (connectionStatus) {
+      case 'CONNECTED':
+        return { label: 'Live Stream Active', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)', border: '#059669', pulse: true }
+      case 'CONNECTING':
+        return { label: 'Connecting Stream...', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)', border: '#d97706', pulse: false }
+      case 'ERROR':
+        return { label: 'Stream Error', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)', border: '#dc2626', pulse: false }
+      default:
+        return { label: 'Offline Mode', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)', border: '#64748b', pulse: false }
+    }
+  }
+
+  const wsBadge = getWsBadge()
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: 'var(--bg-app)' }}>
+      {/* 2026 SaaS Dark Theme Header */}
       <header
         style={{
-          backgroundColor: '#007bff',
-          color: 'white',
-          padding: '1rem 2rem',
+          backgroundColor: 'var(--header-bg)',
+          borderBottom: '1px solid var(--header-border)',
+          color: 'var(--header-text)',
+          padding: '0.75rem 1.25rem',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          flexShrink: 0,
+          zIndex: 200,
         }}
       >
-        <h1 style={{ margin: 0, fontSize: '1.5rem' }}>Bike GPS Tracker</h1>
+        {/* Brand & Mobile Hamburger */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <span>{user?.email}</span>
+          <button
+            onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#ffffff',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0.2rem',
+            }}
+            title="Toggle Device List"
+          >
+            <MenuIcon size={22} />
+          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <div
+              style={{
+                width: '34px',
+                height: '34px',
+                borderRadius: '8px',
+                backgroundColor: '#3b82f6',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff',
+                boxShadow: '0 0 12px rgba(59, 130, 246, 0.5)',
+              }}
+            >
+              <BikeIcon size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#ffffff' }}>
+                BikeTracker <span style={{ color: '#38bdf8', fontWeight: 500, fontSize: '0.8rem' }}>IoT</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Center: Live Connection Pulse */}
+        <div style={{ display: 'none', alignItems: 'center', gap: '0.5rem' }}>
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              backgroundColor: wsBadge.bg,
+              color: wsBadge.color,
+              border: `1px solid ${wsBadge.border}`,
+              padding: '0.25rem 0.75rem',
+              borderRadius: 'var(--radius-full)',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+            }}
+          >
+            <span
+              className={wsBadge.pulse ? 'animate-pulse-green' : ''}
+              style={{
+                width: '7px',
+                height: '7px',
+                borderRadius: '50%',
+                backgroundColor: wsBadge.color,
+                display: 'inline-block',
+              }}
+            />
+            {wsBadge.label}
+          </div>
+        </div>
+
+        {/* Right: User Profile & Logout */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+            <div
+              style={{
+                width: '30px',
+                height: '30px',
+                borderRadius: '50%',
+                backgroundColor: '#334155',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#94a3b8',
+                fontWeight: 700,
+                fontSize: '0.8rem',
+              }}
+            >
+              {user?.email?.[0].toUpperCase() || 'U'}
+            </div>
+            <span style={{ color: '#cbd5e1', display: 'none' }}>{user?.email}</span>
+          </div>
+
           <button
             onClick={handleLogout}
             style={{
-              backgroundColor: 'rgba(255,255,255,0.2)',
-              color: 'white',
-              border: 'none',
-              padding: '0.5rem 1rem',
-              borderRadius: '4px',
+              backgroundColor: 'rgba(255,255,255,0.08)',
+              color: '#cbd5e1',
+              border: '1px solid rgba(255,255,255,0.15)',
+              padding: '0.4rem 0.8rem',
+              borderRadius: 'var(--radius-md)',
               cursor: 'pointer',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.2)'
+              e.currentTarget.style.color = '#fca5a5'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'
+              e.currentTarget.style.color = '#cbd5e1'
             }}
           >
-            Logout
+            <LogOutIcon size={14} />
+            <span>Logout</span>
           </button>
         </div>
       </header>
@@ -373,25 +490,25 @@ export default function Dashboard() {
             position: 'fixed',
             top: '4.5rem',
             right: '1.5rem',
-            backgroundColor: toastAlert.type === 'OVERSPEED' ? '#d32f2f' : '#2e7d32',
+            backgroundColor: toastAlert.type === 'OVERSPEED' ? '#dc2626' : '#16a34a',
             color: 'white',
-            padding: '0.75rem 1.25rem',
-            borderRadius: '8px',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+            padding: '0.85rem 1.25rem',
+            borderRadius: 'var(--radius-lg)',
+            boxShadow: 'var(--shadow-xl)',
             zIndex: 9999,
-            maxWidth: '380px',
+            maxWidth: '400px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: '1rem',
-            animation: 'fadeIn 0.3s ease-in-out',
+            border: '1px solid rgba(255,255,255,0.3)',
           }}
         >
           <div>
             <strong style={{ display: 'block', fontSize: '0.85rem' }}>
-              ⚠️ REAL-TIME ALERT: {toastAlert.type}
+              🚨 REAL-TIME ALERT: {toastAlert.type}
             </strong>
-            <span style={{ fontSize: '0.8rem' }}>{toastAlert.message}</span>
+            <span style={{ fontSize: '0.8rem', opacity: 0.95 }}>{toastAlert.message}</span>
           </div>
           <button
             onClick={() => setToastAlert(null)}
@@ -400,57 +517,50 @@ export default function Dashboard() {
               border: 'none',
               color: 'white',
               cursor: 'pointer',
-              fontSize: '1.1rem',
-              lineHeight: 1,
+              padding: '0.2rem',
+              display: 'flex',
+              alignItems: 'center',
             }}
           >
-            ✕
+            <CloseIcon size={18} />
           </button>
         </div>
       )}
 
-      {(panelError || wsError) && (
-        <div
+      {/* Main App Layout */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+        {/* Left Sidebar (Desktop fixed + Mobile Slide-over Drawer) */}
+        <aside
           style={{
-            backgroundColor: '#f8d7da',
-            color: '#721c24',
-            padding: '0.5rem 1.5rem',
-            fontSize: '0.875rem',
+            width: '320px',
+            borderRight: '1px solid var(--border-subtle)',
+            backgroundColor: '#ffffff',
+            display: 'flex',
+            flexDirection: 'column',
+            overflowY: 'auto',
+            flexShrink: 0,
+            zIndex: 150,
+            position: 'relative',
+            ...(mobileSidebarOpen
+              ? { position: 'absolute', top: 0, left: 0, bottom: 0, boxShadow: 'var(--shadow-xl)' }
+              : {}),
           }}
         >
-          {panelError || wsError}
-        </div>
-      )}
-
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <div
-          style={{
-            width: '300px',
-            borderRight: '1px solid #ddd',
-            overflow: 'auto',
-            backgroundColor: '#f9f9f9',
-          }}
-        >
-          <div style={{ padding: '1rem', borderBottom: '1px solid #ddd' }}>
+          <div style={{ padding: '1rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: '0.5rem' }}>
             <button
               onClick={() => setShowRegistration(!showRegistration)}
-              style={{
-                width: '100%',
-                padding: '0.5rem 1rem',
-                backgroundColor: showRegistration ? '#6c757d' : '#28a745',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '1rem',
-              }}
+              className="btn-primary"
+              style={{ flex: 1, padding: '0.55rem' }}
             >
-              {showRegistration ? 'Cancel' : '+ Add Device'}
+              {showRegistration ? 'Cancel Registration' : '+ Register Device'}
             </button>
           </div>
 
           {showRegistration && (
-            <DeviceRegistration onRegistrationSuccess={handleRegistrationSuccess} />
+            <DeviceRegistration
+              onRegistrationSuccess={handleRegistrationSuccess}
+              onCancel={() => setShowRegistration(false)}
+            />
           )}
 
           <DeviceList
@@ -460,10 +570,64 @@ export default function Dashboard() {
             onDevicesLoaded={handleDevicesLoaded}
             onDeviceDeleted={handleDeviceDeleted}
           />
-        </div>
+        </aside>
 
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+        {/* Mobile backdrop */}
+        {mobileSidebarOpen && (
+          <div
+            onClick={() => setMobileSidebarOpen(false)}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(15, 23, 42, 0.4)',
+              backdropFilter: 'blur(2px)',
+              zIndex: 140,
+            }}
+          />
+        )}
+
+        {/* Right Main Dashboard Area */}
+        <main
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
+            overflowY: 'auto',
+            padding: '1rem 1.25rem',
+          }}
+        >
+          {/* Hero Device Status Bar */}
+          <HeroStatus
+            device={selectedDevice}
+            location={location}
+            connectionStatus={connectionStatus}
+            onRefresh={handleRefreshAll}
+            onAddDevice={() => setShowRegistration(true)}
+          />
+
+          {/* Key Metrics Row */}
+          <MetricCards
+            location={location}
+            summary={tripSummary}
+            activeTrip={trips.find((t) => t.status === 'ACTIVE') || null}
+            loading={historyLoading}
+          />
+
+          {/* Core Visual Viewport: Live Map Card */}
+          <div
+            className="card"
+            style={{
+              height: '420px',
+              minHeight: '320px',
+              position: 'relative',
+              overflow: 'hidden',
+              marginBottom: '1rem',
+            }}
+          >
             <LiveMap
               location={location}
               routePoints={routePoints}
@@ -476,164 +640,71 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* Bottom Multi-Tab Panel */}
+          {/* IoT Management Hub: Tabbed Bottom Panels */}
           <div
+            className="card"
             style={{
-              height: '290px',
-              borderTop: '1px solid #ddd',
-              backgroundColor: 'white',
+              backgroundColor: '#ffffff',
               display: 'flex',
               flexDirection: 'column',
+              minHeight: '340px',
               overflow: 'hidden',
+              marginBottom: '1rem',
             }}
           >
-            {/* Tab Navigation Header */}
+            {/* Pill Tab Navigation Header */}
             <div
               style={{
                 display: 'flex',
-                borderBottom: '1px solid #e0e0e0',
-                backgroundColor: '#f8f9fa',
-                padding: '0 0.5rem',
+                alignItems: 'center',
+                gap: '0.4rem',
+                borderBottom: '1px solid var(--border-subtle)',
+                backgroundColor: '#f8fafc',
+                padding: '0.6rem 0.85rem',
+                overflowX: 'auto',
+                flexShrink: 0,
               }}
             >
-              <button
-                onClick={() => setActiveTab('telemetry')}
-                style={{
-                  padding: '0.6rem 1rem',
-                  border: 'none',
-                  borderBottom: activeTab === 'telemetry' ? '3px solid #007bff' : '3px solid transparent',
-                  backgroundColor: 'transparent',
-                  fontWeight: activeTab === 'telemetry' ? 'bold' : 'normal',
-                  color: activeTab === 'telemetry' ? '#007bff' : '#495057',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                }}
-              >
-                📊 Telemetry
-              </button>
-
-              <button
-                onClick={() => setActiveTab('history')}
-                style={{
-                  padding: '0.6rem 1rem',
-                  border: 'none',
-                  borderBottom: activeTab === 'history' ? '3px solid #007bff' : '3px solid transparent',
-                  backgroundColor: 'transparent',
-                  fontWeight: activeTab === 'history' ? 'bold' : 'normal',
-                  color: activeTab === 'history' ? '#007bff' : '#495057',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                }}
-              >
-                🕒 Location History ({history.length})
-              </button>
-
-              <button
-                onClick={() => setActiveTab('trips')}
-                style={{
-                  padding: '0.6rem 1rem',
-                  border: 'none',
-                  borderBottom: activeTab === 'trips' ? '3px solid #007bff' : '3px solid transparent',
-                  backgroundColor: 'transparent',
-                  fontWeight: activeTab === 'trips' ? 'bold' : 'normal',
-                  color: activeTab === 'trips' ? '#007bff' : '#495057',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                }}
-              >
-                🚴 Past Trips ({trips.length})
-              </button>
-
-              <button
-                onClick={() => setActiveTab('geofences')}
-                style={{
-                  padding: '0.6rem 1rem',
-                  border: 'none',
-                  borderBottom: activeTab === 'geofences' ? '3px solid #007bff' : '3px solid transparent',
-                  backgroundColor: 'transparent',
-                  fontWeight: activeTab === 'geofences' ? 'bold' : 'normal',
-                  color: activeTab === 'geofences' ? '#007bff' : '#495057',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                }}
-              >
-                🛡️ Geofences ({geofences.length})
-              </button>
-
-              <button
-                onClick={() => setActiveTab('alerts')}
-                style={{
-                  padding: '0.6rem 1rem',
-                  border: 'none',
-                  borderBottom: activeTab === 'alerts' ? '3px solid #007bff' : '3px solid transparent',
-                  backgroundColor: 'transparent',
-                  fontWeight: activeTab === 'alerts' ? 'bold' : 'normal',
-                  color: activeTab === 'alerts' ? '#007bff' : '#495057',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.3rem',
-                }}
-              >
-                ⚠️ Alerts ({alerts.length})
-                {unackedAlertsCount > 0 && (
-                  <span
+              {[
+                { id: 'telemetry', label: '📡 Sensors & Diagnostics' },
+                { id: 'trips', label: `🗺️ Trip Logs (${trips.length})` },
+                { id: 'history', label: `⏱️ Location Breadcrumbs (${history.length})` },
+                { id: 'geofences', label: `🛡️ Safe Zones (${geofences.length})` },
+                { id: 'alerts', label: `⚠️ Security Alerts ${unackedAlertCount > 0 ? `(${unackedAlertCount})` : ''}` },
+              ].map((tab) => {
+                const isActive = activeTab === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as ActiveTab)}
                     style={{
-                      backgroundColor: '#dc3545',
-                      color: 'white',
-                      fontSize: '0.7rem',
-                      fontWeight: 'bold',
-                      padding: '0.05rem 0.4rem',
-                      borderRadius: '10px',
+                      padding: '0.4rem 0.85rem',
+                      fontSize: '0.8rem',
+                      fontWeight: isActive ? 700 : 600,
+                      color: isActive ? '#ffffff' : 'var(--text-secondary)',
+                      backgroundColor: isActive ? 'var(--brand-primary)' : 'transparent',
+                      border: '1px solid',
+                      borderColor: isActive ? 'var(--brand-primary)' : 'transparent',
+                      borderRadius: 'var(--radius-full)',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      transition: 'all var(--transition-fast)',
                     }}
                   >
-                    {unackedAlertsCount}
-                  </span>
-                )}
-              </button>
+                    {tab.label}
+                  </button>
+                )
+              })}
             </div>
 
-            {/* Tab Content Container */}
-            <div style={{ flex: 1, overflow: 'auto' }}>
+            {/* Tab Body Contents */}
+            <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
               {activeTab === 'telemetry' && (
-                <div style={{ display: 'flex', height: '100%' }}>
-                  <div style={{ flex: 1, borderRight: '1px solid #eee', height: '100%', overflow: 'auto' }}>
-                    <TelemetryPanel
-                      device={selectedDevice}
-                      location={location}
-                      connectionStatus={connectionStatus}
-                    />
-                  </div>
-                  <div style={{ flex: 1.2, height: '100%', overflow: 'auto' }}>
-                    <LocationHistoryPanel
-                      locations={history}
-                      loading={historyLoading}
-                      error={historyError}
-                      onRefresh={() => {
-                        if (selectedDevice) {
-                          loadHistory(selectedDevice.device_id)
-                        } else {
-                          setPanelError('Select a device to load history.')
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'history' && (
-                <LocationHistoryPanel
-                  locations={history}
+                <TelemetryPanel
+                  device={selectedDevice}
+                  location={location}
+                  connectionStatus={connectionStatus}
                   loading={historyLoading}
-                  error={historyError}
-                  onRefresh={() => {
-                    if (selectedDevice) {
-                      loadHistory(selectedDevice.device_id)
-                    } else {
-                      setPanelError('Select a device to load history.')
-                    }
-                  }}
                 />
               )}
 
@@ -641,20 +712,23 @@ export default function Dashboard() {
                 <TripHistoryPanel
                   trips={trips}
                   summary={tripSummary}
-                  selectedTripId={selectedTrip?.id}
+                  selectedTripId={selectedTrip?.id ?? null}
+                  selectedTripRoute={selectedTripRoute}
                   loading={tripsLoading}
                   error={tripsError}
-                  onRefresh={() => {
-                    if (selectedDevice) {
-                      loadTrips(selectedDevice.device_id)
-                    } else {
-                      setPanelError('Select a device to load trips.')
-                    }
-                  }}
+                  onRefresh={() => selectedDevice && loadTrips(selectedDevice.device_id)}
                   onSelectTrip={handleSelectTrip}
                 />
               )}
 
+              {activeTab === 'history' && (
+                <LocationHistoryPanel
+                  locations={history}
+                  loading={historyLoading}
+                  error={historyError}
+                  onRefresh={() => selectedDevice && loadHistory(selectedDevice.device_id)}
+                />
+              )}
 
               {activeTab === 'geofences' && (
                 <GeofencePanel
@@ -663,13 +737,7 @@ export default function Dashboard() {
                   geofences={geofences}
                   loading={geofencesLoading}
                   error={geofencesError}
-                  onRefresh={() => {
-                    if (selectedDevice) {
-                      loadGeofences(selectedDevice.device_id)
-                    } else {
-                      setPanelError('Select a device to load geofences.')
-                    }
-                  }}
+                  onRefresh={() => selectedDevice && loadGeofences(selectedDevice.device_id)}
                   onGeofenceCreated={handleGeofenceCreated}
                   onGeofenceUpdated={handleGeofenceUpdated}
                   onGeofenceDeleted={handleGeofenceDeleted}
@@ -682,19 +750,13 @@ export default function Dashboard() {
                   alerts={alerts}
                   loading={alertsLoading}
                   error={alertsError}
-                  onRefresh={() => {
-                    if (selectedDevice) {
-                      loadAlerts(selectedDevice.device_id)
-                    } else {
-                      setPanelError('Select a device to load alerts.')
-                    }
-                  }}
+                  onRefresh={() => selectedDevice && loadAlerts(selectedDevice.device_id)}
                   onAlertAcknowledged={handleAlertAcknowledged}
                 />
               )}
             </div>
           </div>
-        </div>
+        </main>
       </div>
     </div>
   )

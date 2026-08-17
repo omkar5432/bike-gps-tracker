@@ -1,10 +1,14 @@
+import React from 'react'
 import { formatISTDateTime } from '../utils/timeFormatter'
-import type { Trip, TripSummary } from '../types/location'
+import type { Trip, TripSummary, Location } from '../types/location'
+import { SpeedChart } from './SpeedChart'
+import { RouteIcon, SpeedometerIcon, RefreshIcon } from './Icons'
 
 interface TripHistoryPanelProps {
   trips: Trip[]
   summary?: TripSummary | null
   selectedTripId?: number | null
+  selectedTripRoute?: Location[] | null
   loading: boolean
   error: string | null
   onRefresh: () => void
@@ -15,6 +19,7 @@ export default function TripHistoryPanel({
   trips,
   summary,
   selectedTripId,
+  selectedTripRoute,
   loading,
   error,
   onRefresh,
@@ -30,140 +35,97 @@ export default function TripHistoryPanel({
           marginBottom: '0.75rem',
         }}
       >
-        <h2 style={{ margin: 0, fontSize: '1.1rem' }}>
-          Past Trips ({trips.length})
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Trip Log ({trips.length})
+          </h3>
+        </div>
+
         <button
           onClick={onRefresh}
           disabled={loading}
-          style={{
-            padding: '0.35rem 0.75rem',
-            border: '1px solid #ccc',
-            borderRadius: '4px',
-            backgroundColor: loading ? '#eee' : 'white',
-            cursor: loading ? 'not-allowed' : 'pointer',
-            fontSize: '0.85rem',
-          }}
+          className="btn-secondary"
+          style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
         >
-          {loading ? 'Loading...' : 'Refresh'}
+          <RefreshIcon size={14} />
+          <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
         </button>
       </div>
 
       {error && (
         <div
           style={{
-            backgroundColor: '#f8d7da',
-            color: '#721c24',
+            backgroundColor: '#fef2f2',
+            color: '#dc2626',
+            border: '1px solid #fecaca',
             padding: '0.5rem 0.75rem',
-            borderRadius: '4px',
+            borderRadius: 'var(--radius-md)',
             marginBottom: '0.75rem',
-            fontSize: '0.875rem',
+            fontSize: '0.8rem',
           }}
         >
           {error}
         </div>
       )}
 
-      {/* Trip Analytics Summary Cards */}
-      {summary && summary.total_trips > 0 && (
+      {/* Selected Trip Speed Analytics Chart */}
+      {selectedTripId && selectedTripRoute && selectedTripRoute.length > 1 && (
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: '0.5rem',
+            backgroundColor: '#ffffff',
+            border: '1px solid #c7d2fe',
+            borderRadius: 'var(--radius-md)',
+            padding: '0.85rem',
             marginBottom: '1rem',
+            boxShadow: 'var(--shadow-sm)',
           }}
         >
-          <div
-            style={{
-              backgroundColor: '#eef2ff',
-              padding: '0.5rem 0.75rem',
-              borderRadius: '6px',
-              border: '1px solid #c7d2fe',
-            }}
-          >
-            <div style={{ fontSize: '0.7rem', color: '#4338ca', fontWeight: 600 }}>TOTAL TRIPS</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1e1b4b' }}>
-              {summary.total_trips}
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#4338ca' }}>
+              📊 Speed Profile (Trip #{selectedTripId})
+            </span>
+            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+              {selectedTripRoute.length} GPS checkpoints
+            </span>
           </div>
-
-          <div
-            style={{
-              backgroundColor: '#ecfdf5',
-              padding: '0.5rem 0.75rem',
-              borderRadius: '6px',
-              border: '1px solid #a7f3d0',
-            }}
-          >
-            <div style={{ fontSize: '0.7rem', color: '#047857', fontWeight: 600 }}>TOTAL DISTANCE</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#064e3b' }}>
-              {summary.total_distance_km.toFixed(1)} <span style={{ fontSize: '0.75rem' }}>km</span>
-            </div>
-          </div>
-
-          <div
-            style={{
-              backgroundColor: '#fffbeb',
-              padding: '0.5rem 0.75rem',
-              borderRadius: '6px',
-              border: '1px solid #fde68a',
-            }}
-          >
-            <div style={{ fontSize: '0.7rem', color: '#b45309', fontWeight: 600 }}>AVG DISTANCE</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#78350f' }}>
-              {summary.average_trip_distance_km.toFixed(1)} <span style={{ fontSize: '0.75rem' }}>km</span>
-            </div>
-          </div>
-
-          <div
-            style={{
-              backgroundColor: '#fdf2f8',
-              padding: '0.5rem 0.75rem',
-              borderRadius: '6px',
-              border: '1px solid #fbcfe8',
-            }}
-          >
-            <div style={{ fontSize: '0.7rem', color: '#be185d', fontWeight: 600 }}>MAX SPEED</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#831843' }}>
-              {summary.max_recorded_speed_kmh.toFixed(1)} <span style={{ fontSize: '0.75rem' }}>km/h</span>
-            </div>
-          </div>
+          <SpeedChart locations={selectedTripRoute} height={140} />
         </div>
       )}
 
       {loading && trips.length === 0 ? (
-        <div style={{ color: '#666', fontSize: '0.875rem' }}>Loading trips...</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div className="skeleton" style={{ height: '70px' }} />
+          <div className="skeleton" style={{ height: '70px' }} />
+        </div>
       ) : trips.length === 0 ? (
         <div
           style={{
-            backgroundColor: '#f9f9f9',
+            backgroundColor: '#f8fafc',
+            border: '1px dashed var(--border-strong)',
             padding: '1.5rem',
-            borderRadius: '4px',
-            color: '#666',
+            borderRadius: 'var(--radius-md)',
+            color: 'var(--text-secondary)',
             textAlign: 'center',
-            fontSize: '0.875rem',
+            fontSize: '0.85rem',
           }}
         >
-          No trips recorded yet. Trips are automatically created when the bike exceeds 5 km/h.
+          No recorded rides yet. Ride telemetry will automatically be logged here.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
           {trips.map((trip) => {
-            const isActive = !trip.end_time || trip.status === 'ACTIVE'
             const isSelected = selectedTripId === trip.id
+            const isActive = trip.status === 'ACTIVE'
 
             return (
               <div
                 key={trip.id}
                 style={{
                   backgroundColor: isSelected ? '#f5f3ff' : '#ffffff',
-                  border: isSelected ? '2px solid #8b5cf6' : '1px solid #e5e7eb',
-                  padding: '0.75rem 1rem',
-                  borderRadius: '6px',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                  fontSize: '0.85rem',
-                  transition: 'all 0.15s ease',
+                  border: isSelected ? '1.5px solid #8b5cf6' : '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '0.75rem 0.9rem',
+                  transition: 'all var(--transition-fast)',
                 }}
               >
                 <div
@@ -171,23 +133,24 @@ export default function TripHistoryPanel({
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    marginBottom: '0.4rem',
+                    marginBottom: '0.5rem',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <span
                       style={{
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
                         padding: '0.15rem 0.45rem',
-                        borderRadius: '4px',
-                        backgroundColor: isActive ? '#dcfce7' : '#f3f4f6',
-                        color: isActive ? '#15803d' : '#4b5563',
+                        borderRadius: 'var(--radius-sm)',
+                        backgroundColor: isActive ? '#ecfdf5' : '#f1f5f9',
+                        color: isActive ? '#059669' : '#475569',
+                        border: `1px solid ${isActive ? '#a7f3d0' : '#e2e8f0'}`,
                       }}
                     >
-                      {isActive ? '🟢 Active Ride' : '✓ Completed'}
+                      {isActive ? '● Active Ride' : '✓ Completed'}
                     </span>
-                    <strong style={{ color: '#1f2937' }}>
+                    <strong style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>
                       {formatISTDateTime(trip.start_time)}
                     </strong>
                   </div>
@@ -196,17 +159,18 @@ export default function TripHistoryPanel({
                     <button
                       onClick={() => onSelectTrip(trip)}
                       style={{
-                        padding: '0.25rem 0.6rem',
+                        padding: '0.25rem 0.65rem',
                         fontSize: '0.75rem',
                         fontWeight: 600,
-                        borderRadius: '4px',
-                        border: isSelected ? '1px solid #7c3aed' : '1px solid #d1d5db',
+                        borderRadius: 'var(--radius-sm)',
+                        border: isSelected ? '1px solid #7c3aed' : '1px solid var(--border-strong)',
                         backgroundColor: isSelected ? '#7c3aed' : '#ffffff',
-                        color: isSelected ? '#ffffff' : '#4b5563',
+                        color: isSelected ? '#ffffff' : 'var(--text-primary)',
                         cursor: 'pointer',
+                        transition: 'all 0.2s',
                       }}
                     >
-                      {isSelected ? 'Viewing Route' : '🗺️ View Route'}
+                      {isSelected ? '✓ Viewing Route' : '🗺️ View Route'}
                     </button>
                   )}
                 </div>
@@ -214,30 +178,46 @@ export default function TripHistoryPanel({
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))',
                     gap: '0.5rem',
-                    color: '#4b5563',
-                    fontSize: '0.8rem',
-                    backgroundColor: isSelected ? '#ede9fe' : '#f9fafb',
-                    padding: '0.5rem',
-                    borderRadius: '4px',
+                    color: 'var(--text-secondary)',
+                    fontSize: '0.75rem',
+                    backgroundColor: isSelected ? '#ede9fe' : '#f8fafc',
+                    padding: '0.45rem 0.65rem',
+                    borderRadius: 'var(--radius-sm)',
                   }}
                 >
                   <div>
-                    <span style={{ color: '#6b7280', display: 'block', fontSize: '0.7rem' }}>Distance</span>
-                    <strong>{trip.distance != null ? `${Number(trip.distance).toFixed(2)} km` : '0.00 km'}</strong>
+                    <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.65rem', fontWeight: 600 }}>
+                      DISTANCE
+                    </span>
+                    <strong style={{ color: 'var(--text-primary)' }}>
+                      {trip.distance != null ? `${Number(trip.distance).toFixed(2)} km` : '0.00 km'}
+                    </strong>
                   </div>
                   <div>
-                    <span style={{ color: '#6b7280', display: 'block', fontSize: '0.7rem' }}>Duration</span>
-                    <strong>{trip.duration ?? (isActive ? 'In Progress' : '00:00:00')}</strong>
+                    <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.65rem', fontWeight: 600 }}>
+                      DURATION
+                    </span>
+                    <strong style={{ color: 'var(--text-primary)' }}>
+                      {trip.duration ?? (isActive ? 'In Progress' : '00:00:00')}
+                    </strong>
                   </div>
                   <div>
-                    <span style={{ color: '#6b7280', display: 'block', fontSize: '0.7rem' }}>Avg Speed</span>
-                    <strong>{trip.average_speed != null ? `${Number(trip.average_speed).toFixed(1)} km/h` : '0.0 km/h'}</strong>
+                    <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.65rem', fontWeight: 600 }}>
+                      AVG SPEED
+                    </span>
+                    <strong style={{ color: 'var(--text-primary)' }}>
+                      {trip.average_speed != null ? `${Number(trip.average_speed).toFixed(1)} km/h` : '0.0 km/h'}
+                    </strong>
                   </div>
                   <div>
-                    <span style={{ color: '#6b7280', display: 'block', fontSize: '0.7rem' }}>Max Speed</span>
-                    <strong>{trip.max_speed != null ? `${Number(trip.max_speed).toFixed(1)} km/h` : '0.0 km/h'}</strong>
+                    <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.65rem', fontWeight: 600 }}>
+                      MAX SPEED
+                    </span>
+                    <strong style={{ color: 'var(--text-primary)' }}>
+                      {trip.max_speed != null ? `${Number(trip.max_speed).toFixed(1)} km/h` : '0.0 km/h'}
+                    </strong>
                   </div>
                 </div>
               </div>
@@ -248,4 +228,3 @@ export default function TripHistoryPanel({
     </div>
   )
 }
-

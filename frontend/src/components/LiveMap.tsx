@@ -548,7 +548,7 @@ export default function LiveMap({
         style={{ width: '100%', height: '100%' }}
       />
 
-      {/* Historical Trip Route Overlay Banner */}
+      {/* Historical Trip Route Review Mode Banner */}
       {selectedTrip && (
         <div
           style={{
@@ -557,54 +557,65 @@ export default function LiveMap({
             left: '50%',
             transform: 'translateX(-50%)',
             backgroundColor: '#1e1b4b',
-            color: 'white',
-            padding: '0.6rem 1.2rem',
-            borderRadius: '8px',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-            zIndex: 1001,
+            color: '#ffffff',
+            padding: '0.65rem 1.25rem',
+            borderRadius: 'var(--radius-full)',
+            boxShadow: 'var(--shadow-lg)',
+            zIndex: 1000,
             display: 'flex',
             alignItems: 'center',
             gap: '1rem',
+            border: '1px solid #4338ca',
             fontSize: '0.85rem',
+            maxWidth: '90%',
           }}
         >
-          <div>
-            <strong>🗺️ Viewing Historical Trip #{selectedTrip.id}</strong> —{' '}
-            <span>{Number(selectedTrip.distance).toFixed(2)} km</span> ({selectedTrip.duration ?? '00:00:00'})
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '1rem' }}>🗺️</span>
+            <strong>Reviewing Trip #{selectedTrip.id}</strong>
+            <span style={{ color: '#c7d2fe' }}>({selectedTrip.distance ? `${Number(selectedTrip.distance).toFixed(2)} km` : 'Route'})</span>
           </div>
+
           {onClearSelectedTrip && (
             <button
               onClick={onClearSelectedTrip}
               style={{
-                backgroundColor: '#7c3aed',
+                backgroundColor: '#ef4444',
                 color: 'white',
                 border: 'none',
-                padding: '0.35rem 0.75rem',
-                borderRadius: '4px',
+                padding: '0.3rem 0.75rem',
+                borderRadius: 'var(--radius-full)',
                 cursor: 'pointer',
-                fontSize: '0.8rem',
-                fontWeight: 600,
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                transition: 'opacity 0.2s',
               }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
             >
-              ✕ Return to Live
+              ✕ Exit Route View
             </button>
           )}
         </div>
       )}
 
+      {/* Floating Status & Breadcrumb Counter */}
       <div
         style={{
           position: 'absolute',
           top: '1rem',
           right: '1rem',
-          backgroundColor: 'white',
-          padding: '0.5rem 1rem',
-          borderRadius: '4px',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+          backgroundColor: '#ffffff',
+          padding: '0.45rem 0.85rem',
+          borderRadius: 'var(--radius-full)',
+          boxShadow: 'var(--shadow-md)',
           zIndex: 1000,
           display: 'flex',
           alignItems: 'center',
-          gap: '0.5rem',
+          gap: '0.6rem',
+          border: '1px solid var(--border-subtle)',
+          fontSize: '0.75rem',
+          fontWeight: 600,
         }}
       >
         <span
@@ -616,25 +627,49 @@ export default function LiveMap({
             display: 'inline-block',
           }}
         />
-        {status.label}
+        <span>{status.label}</span>
+        {routePoints.length > 0 && !selectedTrip && (
+          <span style={{ color: 'var(--text-muted)', borderLeft: '1px solid var(--border-subtle)', paddingLeft: '0.5rem' }}>
+            {routePoints.length} pts
+          </span>
+        )}
       </div>
 
+      {/* Floating Coordinates Bar with Copy */}
       {location && (
         <div
           style={{
             position: 'absolute',
             bottom: '1rem',
             left: '1rem',
-            backgroundColor: 'white',
-            padding: '0.5rem 0.75rem',
-            borderRadius: '4px',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+            backgroundColor: '#ffffff',
+            padding: '0.45rem 0.85rem',
+            borderRadius: 'var(--radius-md)',
+            boxShadow: 'var(--shadow-md)',
             zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.6rem',
+            border: '1px solid var(--border-subtle)',
             fontSize: '0.8rem',
-            fontFamily: 'monospace',
+            fontFamily: 'var(--font-mono)',
           }}
         >
-          {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+          <span>📍 {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}</span>
+          <button
+            onClick={() => navigator.clipboard.writeText(`${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`)}
+            title="Copy Coordinates"
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              fontSize: '0.85rem',
+              padding: '0 0.2rem',
+            }}
+          >
+            📋
+          </button>
         </div>
       )}
 
@@ -645,16 +680,19 @@ export default function LiveMap({
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
-            backgroundColor: '#f8d7da',
-            color: '#721c24',
-            padding: '1rem 1.5rem',
-            borderRadius: '8px',
+            backgroundColor: '#fef2f2',
+            color: '#dc2626',
+            border: '1px solid #fecaca',
+            padding: '1.25rem 1.75rem',
+            borderRadius: 'var(--radius-lg)',
             zIndex: 1000,
-            maxWidth: '80%',
+            maxWidth: '85%',
             textAlign: 'center',
+            boxShadow: 'var(--shadow-lg)',
           }}
         >
-          {mapError}
+          <strong style={{ display: 'block', marginBottom: '0.35rem' }}>Map Engine Error</strong>
+          <span style={{ fontSize: '0.85rem' }}>{mapError}</span>
         </div>
       )}
 
@@ -665,17 +703,25 @@ export default function LiveMap({
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
-            backgroundColor: 'rgba(255,255,255,0.9)',
-            padding: '1rem 2rem',
-            borderRadius: '8px',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+            backgroundColor: 'rgba(255,255,255,0.95)',
+            backdropFilter: 'blur(4px)',
+            padding: '1.25rem 2rem',
+            borderRadius: 'var(--radius-lg)',
+            boxShadow: 'var(--shadow-lg)',
+            border: '1px solid var(--border-subtle)',
             zIndex: 1000,
+            textAlign: 'center',
           }}
         >
-          {device ? 'Waiting for GPS...' : 'Select a device to track'}
+          <div style={{ fontSize: '1.5rem', marginBottom: '0.35rem' }}>🛰️</div>
+          <strong style={{ display: 'block', color: 'var(--text-primary)', fontSize: '0.95rem' }}>
+            {device ? 'Acquiring GPS Signal...' : 'Select a device to start tracking'}
+          </strong>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+            {device ? 'Live coordinates will appear as soon as the bike broadcasts telemetry.' : 'Add or choose a registered GPS unit from the sidebar.'}
+          </span>
         </div>
       )}
     </div>
   )
 }
-

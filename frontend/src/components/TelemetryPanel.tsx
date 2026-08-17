@@ -1,7 +1,8 @@
-import type { CSSProperties } from 'react'
+import React from 'react'
 import { formatISTDateTime } from '../utils/timeFormatter'
 import type { Device } from '../types/device'
 import type { Location, ConnectionStatus } from '../types/location'
+import { BikeIcon, RadioIcon, SpeedometerIcon, BatteryIcon, CrosshairIcon, SatelliteIcon, AltitudeIcon, ClockIcon } from './Icons'
 
 interface TelemetryPanelProps {
   device: Device | null
@@ -12,41 +13,18 @@ interface TelemetryPanelProps {
 
 function formatValue(value: number | null | undefined, suffix = '', digits = 1): string {
   if (value === null || value === undefined) return 'N/A'
-  return `${value.toFixed(digits)}${suffix}`
+  return `${Number(value).toFixed(digits)}${suffix}`
 }
 
-function deviceStatusColor(status: string): string {
+function getStatusBadge(status: string) {
   switch (status) {
     case 'ONLINE':
-      return '#28a745'
-    case 'OFFLINE':
-      return '#6c757d'
+      return { label: 'Online', bg: '#ecfdf5', color: '#059669', border: '#a7f3d0' }
     case 'INACTIVE':
-      return '#dc3545'
+      return { label: 'Inactive', bg: '#fef2f2', color: '#dc2626', border: '#fecaca' }
     default:
-      return '#6c757d'
+      return { label: 'Offline', bg: '#f8fafc', color: '#64748b', border: '#e2e8f0' }
   }
-}
-
-function connectionColor(status: ConnectionStatus): string {
-  switch (status) {
-    case 'CONNECTED':
-      return '#28a745'
-    case 'CONNECTING':
-      return '#ffc107'
-    case 'DISCONNECTED':
-      return '#6c757d'
-    case 'ERROR':
-      return '#dc3545'
-    default:
-      return '#6c757d'
-  }
-}
-
-const cardStyle: CSSProperties = {
-  backgroundColor: '#f9f9f9',
-  padding: '0.75rem 1rem',
-  borderRadius: '4px',
 }
 
 export default function TelemetryPanel({
@@ -57,148 +35,123 @@ export default function TelemetryPanel({
 }: TelemetryPanelProps) {
   if (loading) {
     return (
-      <div style={{ padding: '1rem' }}>
-        <div style={{ color: '#666' }}>Loading device data...</div>
+      <div style={{ padding: '1.25rem' }}>
+        <div className="skeleton" style={{ height: '80px', marginBottom: '0.75rem' }} />
+        <div className="skeleton" style={{ height: '80px' }} />
       </div>
     )
   }
 
   if (!device) {
     return (
-      <div style={{ padding: '1rem' }}>
-        <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem' }}>Telemetry</h2>
-        <div
-          style={{
-            backgroundColor: '#f9f9f9',
-            padding: '1.5rem',
-            borderRadius: '4px',
-            textAlign: 'center',
-            color: '#666',
-          }}
-        >
-          Select a device to view telemetry
-        </div>
+      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📡</div>
+        <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>No Device Selected</h3>
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Choose a bike from the sidebar to inspect telemetry.</p>
       </div>
     )
   }
 
+  const badge = getStatusBadge(device.status)
+
+  const items = [
+    {
+      label: 'Live Speed',
+      value: location ? formatValue(location.speed, ' km/h') : '0.0 km/h',
+      icon: <SpeedometerIcon size={18} color="#2563eb" />,
+      highlight: true,
+    },
+    {
+      label: 'Battery Level',
+      value: location ? formatValue(location.battery, '%', 0) : 'N/A',
+      icon: <BatteryIcon size={18} color={location?.battery && location.battery > 20 ? '#059669' : '#dc2626'} />,
+    },
+    {
+      label: 'GPS Accuracy',
+      value: location ? formatValue(location.gps_accuracy, ' m') : 'N/A',
+      icon: <CrosshairIcon size={18} color="#d97706" />,
+    },
+    {
+      label: 'Satellites Locked',
+      value: location?.satellites !== null && location?.satellites !== undefined ? `${location.satellites}` : 'N/A',
+      icon: <SatelliteIcon size={18} color="#4f46e5" />,
+    },
+    {
+      label: 'Elevation / Altitude',
+      value: location ? formatValue(location.altitude, ' m', 0) : 'N/A',
+      icon: <AltitudeIcon size={18} color="#0891b2" />,
+    },
+    {
+      label: 'GPS Coordinates',
+      value: location ? `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}` : 'N/A',
+      icon: <CrosshairIcon size={18} color="#64748b" />,
+      mono: true,
+    },
+    {
+      label: 'Last Broadcast',
+      value: location?.timestamp ? formatISTDateTime(location.timestamp) : 'N/A',
+      icon: <ClockIcon size={18} color="#64748b" />,
+    },
+    {
+      label: 'Hardware Registration',
+      value: device.created_at ? formatISTDateTime(device.created_at, false) : 'N/A',
+      icon: <BikeIcon size={18} color="#64748b" />,
+    },
+  ]
+
   return (
     <div style={{ padding: '1rem', height: '100%', overflow: 'auto' }}>
-      <h2 style={{ marginBottom: '0.75rem', fontSize: '1.1rem' }}>Device & Telemetry</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+        {items.map((item, idx) => (
+          <div
+            key={idx}
+            style={{
+              backgroundColor: '#f8fafc',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)',
+              padding: '0.75rem 0.9rem',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.75rem',
+            }}
+          >
+            <div
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                backgroundColor: '#ffffff',
+                border: '1px solid var(--border-subtle)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              {item.icon}
+            </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-          gap: '0.75rem',
-        }}
-      >
-        <div style={cardStyle}>
-          <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.35rem' }}>Device</div>
-          <div style={{ fontWeight: 600 }}>{device.name || 'N/A'}</div>
-          <div style={{ fontSize: '0.85rem', color: '#555', marginTop: '0.25rem' }}>
-            ID: {device.device_id}
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, marginBottom: '0.15rem' }}>
+                {item.label}
+              </div>
+              <div
+                style={{
+                  fontSize: item.highlight ? '1.05rem' : '0.875rem',
+                  fontWeight: item.highlight ? 700 : 600,
+                  color: 'var(--text-primary)',
+                  fontFamily: item.mono ? 'var(--font-mono)' : 'inherit',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {item.value}
+              </div>
+            </div>
           </div>
-        </div>
-
-        <div style={cardStyle}>
-          <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.35rem' }}>
-            Device Status
-          </div>
-          <div style={{ fontWeight: 700, color: deviceStatusColor(device.status) }}>
-            {device.status || 'N/A'}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#555', marginTop: '0.35rem' }}>
-            Last seen:{' '}
-            {device.last_seen ? formatISTDateTime(device.last_seen) : 'N/A'}
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.35rem' }}>
-            Connection
-          </div>
-          <div style={{ fontWeight: 700, color: connectionColor(connectionStatus) }}>
-            {connectionStatus}
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.35rem' }}>Speed</div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>
-            {location ? formatValue(location.speed, ' km/h') : 'N/A'}
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.35rem' }}>Battery</div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>
-            {location ? formatValue(location.battery, '%', 0) : 'N/A'}
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.35rem' }}>
-            GPS Accuracy
-          </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>
-            {location ? formatValue(location.gps_accuracy, ' m') : 'N/A'}
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.35rem' }}>
-            Satellites
-          </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>
-            {location && location.satellites !== null && location.satellites !== undefined
-              ? location.satellites
-              : 'N/A'}
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.35rem' }}>Altitude</div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>
-            {location ? formatValue(location.altitude, ' m', 0) : 'N/A'}
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.35rem' }}>
-            Coordinates
-          </div>
-          <div style={{ fontSize: '0.9rem', fontFamily: 'monospace' }}>
-            {location
-              ? `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`
-              : 'N/A'}
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.35rem' }}>
-            Last Update
-          </div>
-          <div style={{ fontSize: '0.85rem' }}>
-            {location?.timestamp ? formatISTDateTime(location.timestamp) : 'N/A'}
-          </div>
-        </div>
+        ))}
       </div>
-
-      {!location && (
-        <div
-          style={{
-            marginTop: '0.75rem',
-            padding: '0.75rem',
-            backgroundColor: '#fff8e1',
-            borderRadius: '4px',
-            color: '#666',
-            fontSize: '0.875rem',
-          }}
-        >
-          Waiting for live GPS data... Historical route may still appear below if available.
-        </div>
-      )}
     </div>
   )
 }

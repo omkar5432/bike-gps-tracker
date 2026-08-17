@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import type { Alert } from '../types/alert'
 import { acknowledgeAlert } from '../services/api'
 import { formatISTDateTime } from '../utils/timeFormatter'
+import { AlertTriangleIcon, RefreshIcon, CheckIcon } from './Icons'
 
 interface AlertsPanelProps {
   deviceId: string | undefined
@@ -45,17 +46,17 @@ export default function AlertsPanel({
   const getTypeStyle = (type: string) => {
     switch (type) {
       case 'GEOFENCE_ENTER':
-        return { bg: '#e8f5e9', color: '#2e7d32', border: '#a5d6a7', label: '🟢 ENTER' }
+        return { bg: '#ecfdf5', color: '#047857', border: '#a7f3d0', label: '🟢 GEOFENCE ENTER' }
       case 'GEOFENCE_EXIT':
-        return { bg: '#fff3e0', color: '#e65100', border: '#ffcc80', label: '🟠 EXIT' }
+        return { bg: '#fffbeb', color: '#b45309', border: '#fde68a', label: '🟠 GEOFENCE EXIT' }
       case 'OVERSPEED':
-        return { bg: '#ffebee', color: '#c62828', border: '#ef9a9a', label: '⚡ OVERSPEED' }
+        return { bg: '#fef2f2', color: '#dc2626', border: '#fecaca', label: '⚡ OVERSPEED' }
       case 'DEVICE_OFFLINE':
-        return { bg: '#eceff1', color: '#37474f', border: '#b0bec5', label: '⚪ OFFLINE' }
+        return { bg: '#f8fafc', color: '#475569', border: '#cbd5e1', label: '⚪ DEVICE OFFLINE' }
       case 'UNEXPECTED_MOVEMENT':
-        return { bg: '#f3e5f5', color: '#6a1b9a', border: '#ce93d8', label: '⚠️ MOVEMENT' }
+        return { bg: '#fdf4ff', color: '#a21caf', border: '#f5d0fe', label: '🚨 THEFT / MOVEMENT' }
       default:
-        return { bg: '#f5f5f5', color: '#424242', border: '#e0e0e0', label: type }
+        return { bg: '#f8fafc', color: '#475569', border: '#e2e8f0', label: type }
     }
   }
 
@@ -67,49 +68,55 @@ export default function AlertsPanel({
           justifyContent: 'space-between',
           alignItems: 'center',
           marginBottom: '0.75rem',
+          flexWrap: 'wrap',
+          gap: '0.5rem',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Alerts</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Security Alerts ({alerts.length})
+          </h3>
           {unackedCount > 0 && (
             <span
               style={{
-                backgroundColor: '#dc3545',
-                color: 'white',
-                fontSize: '0.75rem',
-                fontWeight: 'bold',
-                padding: '0.1rem 0.5rem',
-                borderRadius: '10px',
+                backgroundColor: '#ef4444',
+                color: '#ffffff',
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                padding: '0.15rem 0.45rem',
+                borderRadius: 'var(--radius-full)',
               }}
             >
-              {unackedCount} new
+              {unackedCount} unread
             </span>
           )}
         </div>
 
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={filterUnacked}
-              onChange={(e) => setFilterUnacked(e.target.checked)}
-              style={{ marginRight: '0.3rem' }}
-            />
-            Unacked Only
-          </label>
+          <button
+            onClick={() => setFilterUnacked(!filterUnacked)}
+            style={{
+              padding: '0.35rem 0.75rem',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              borderRadius: 'var(--radius-sm)',
+              border: filterUnacked ? '1.5px solid #3b82f6' : '1px solid var(--border-strong)',
+              backgroundColor: filterUnacked ? '#eff6ff' : '#ffffff',
+              color: filterUnacked ? '#1d4ed8' : 'var(--text-secondary)',
+              cursor: 'pointer',
+            }}
+          >
+            {filterUnacked ? 'Showing Unresolved Only' : 'Show All Alerts'}
+          </button>
+
           <button
             onClick={onRefresh}
             disabled={loading}
-            style={{
-              padding: '0.35rem 0.75rem',
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-              backgroundColor: loading ? '#eee' : 'white',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: '0.85rem',
-            }}
+            className="btn-secondary"
+            style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
           >
-            {loading ? 'Loading...' : 'Refresh'}
+            <RefreshIcon size={14} />
+            <span>Refresh</span>
           </button>
         </div>
       </div>
@@ -117,12 +124,13 @@ export default function AlertsPanel({
       {(error || actionError) && (
         <div
           style={{
-            backgroundColor: '#f8d7da',
-            color: '#721c24',
+            backgroundColor: '#fef2f2',
+            color: '#dc2626',
+            border: '1px solid #fecaca',
             padding: '0.5rem 0.75rem',
-            borderRadius: '4px',
+            borderRadius: 'var(--radius-md)',
             marginBottom: '0.75rem',
-            fontSize: '0.875rem',
+            fontSize: '0.8rem',
           }}
         >
           {error || actionError}
@@ -130,25 +138,30 @@ export default function AlertsPanel({
       )}
 
       {loading && alerts.length === 0 ? (
-        <div style={{ color: '#666', fontSize: '0.875rem' }}>Loading alerts...</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div className="skeleton" style={{ height: '60px' }} />
+          <div className="skeleton" style={{ height: '60px' }} />
+        </div>
       ) : displayedAlerts.length === 0 ? (
         <div
           style={{
-            backgroundColor: '#f9f9f9',
+            backgroundColor: '#f8fafc',
+            border: '1px dashed var(--border-strong)',
             padding: '1.5rem',
-            borderRadius: '4px',
-            color: '#666',
+            borderRadius: 'var(--radius-md)',
+            color: 'var(--text-secondary)',
             textAlign: 'center',
-            fontSize: '0.875rem',
+            fontSize: '0.85rem',
           }}
         >
-          {filterUnacked ? 'No unacknowledged alerts.' : 'No alerts recorded for this device.'}
+          {filterUnacked ? 'No unacknowledged alerts. Everything is quiet!' : 'No security alerts recorded.'}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {displayedAlerts.map((alert) => {
-            const isActing = actingId === alert.id
             const typeStyle = getTypeStyle(alert.type)
+            const isActing = actingId === alert.id
+
             return (
               <div
                 key={alert.id}
@@ -156,40 +169,41 @@ export default function AlertsPanel({
                   display: 'flex',
                   alignItems: 'flex-start',
                   justifyContent: 'space-between',
-                  padding: '0.65rem 0.75rem',
-                  border: `1px solid ${alert.acknowledged ? '#e9ecef' : typeStyle.border}`,
-                  borderRadius: '6px',
+                  padding: '0.65rem 0.85rem',
+                  border: `1px solid ${alert.acknowledged ? 'var(--border-subtle)' : typeStyle.border}`,
+                  borderRadius: 'var(--radius-md)',
                   backgroundColor: alert.acknowledged ? '#fcfcfc' : '#ffffff',
-                  boxShadow: alert.acknowledged ? 'none' : '0 1px 4px rgba(0,0,0,0.06)',
                   opacity: alert.acknowledged ? 0.75 : 1,
+                  transition: 'all var(--transition-fast)',
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
                     <span
                       style={{
                         backgroundColor: typeStyle.bg,
                         color: typeStyle.color,
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
                         padding: '0.15rem 0.4rem',
-                        borderRadius: '3px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: `1px solid ${typeStyle.border}`,
                       }}
                     >
                       {typeStyle.label}
                     </span>
-                    <span style={{ fontSize: '0.75rem', color: '#6c757d' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                       {formatISTDateTime(alert.created_at)}
                     </span>
                   </div>
 
-                  <div style={{ fontSize: '0.85rem', fontWeight: 500, color: '#212529', marginBottom: '0.2rem' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.2rem' }}>
                     {alert.message}
                   </div>
 
                   {alert.latitude !== null && alert.latitude !== undefined && alert.longitude !== null && alert.longitude !== undefined && (
-                    <div style={{ fontSize: '0.75rem', color: '#6c757d', fontFamily: 'monospace' }}>
-                      📍 {alert.latitude.toFixed(6)}, {alert.longitude.toFixed(6)}
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      📍 {alert.latitude.toFixed(5)}, {alert.longitude.toFixed(5)}
                     </div>
                   )}
                 </div>
@@ -198,29 +212,24 @@ export default function AlertsPanel({
                   {alert.acknowledged ? (
                     <span
                       style={{
-                        fontSize: '0.75rem',
-                        color: '#6c757d',
-                        backgroundColor: '#e9ecef',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        color: '#059669',
+                        backgroundColor: '#ecfdf5',
+                        border: '1px solid #a7f3d0',
                         padding: '0.2rem 0.5rem',
-                        borderRadius: '3px',
+                        borderRadius: 'var(--radius-sm)',
                         display: 'inline-block',
                       }}
                     >
-                      ✓ Acked
+                      ✓ Resolved
                     </span>
                   ) : (
                     <button
                       onClick={() => handleAcknowledge(alert.id)}
                       disabled={isActing}
-                      style={{
-                        padding: '0.3rem 0.6rem',
-                        fontSize: '0.75rem',
-                        borderRadius: '4px',
-                        border: '1px solid #ced4da',
-                        backgroundColor: '#ffffff',
-                        color: '#495057',
-                        cursor: isActing ? 'not-allowed' : 'pointer',
-                      }}
+                      className="btn-secondary"
+                      style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
                     >
                       {isActing ? '...' : 'Acknowledge'}
                     </button>
