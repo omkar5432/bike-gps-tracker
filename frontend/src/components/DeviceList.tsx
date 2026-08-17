@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { fetchDevices, deleteDevice } from '../services/api'
+import { formatISTDateTime } from '../utils/timeFormatter'
 import type { Device } from '../types/device'
 
 interface DeviceListProps {
@@ -179,8 +180,7 @@ export default function DeviceList({
               ● {device.status}
             </div>
             <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.25rem' }}>
-              Last seen:{' '}
-              {device.last_seen ? new Date(device.last_seen).toLocaleString() : 'Never'}
+              Last seen: {device.last_seen ? formatISTDateTime(device.last_seen) : 'Never'}
             </div>
           </div>
         ))}

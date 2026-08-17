@@ -1,3 +1,4 @@
+import { formatISTDateTime } from '../utils/timeFormatter'
 import type { Location } from '../types/location'
 
 interface LocationHistoryPanelProps {
@@ -97,7 +98,7 @@ export default function LocationHistoryPanel({
               {locations.map((loc) => (
                 <tr key={loc.id} style={{ borderBottom: '1px solid #eee' }}>
                   <td style={{ padding: '0.4rem', whiteSpace: 'nowrap' }}>
-                    {new Date(loc.timestamp).toLocaleString()}
+                    {formatISTDateTime(loc.timestamp)}
                   </td>
                   <td style={{ padding: '0.4rem', fontFamily: 'monospace' }}>
                     {loc.latitude.toFixed(6)}

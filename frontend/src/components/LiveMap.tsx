@@ -3,6 +3,7 @@ import * as maplibregl from 'maplibre-gl'
 import { setWorkerUrl } from 'maplibre-gl'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { formatISTDateTime } from '../utils/timeFormatter'
 import type { Location, ConnectionStatus, Trip } from '../types/location'
 import type { Device } from '../types/device'
 import type { Geofence } from '../types/geofence'
@@ -342,7 +343,8 @@ export default function LiveMap({
       <div style="font-size: 0.875rem; line-height: 1.4;">
         <strong>${deviceLabel}</strong><br/>
         ${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}<br/>
-        Speed: ${location.speed !== null && location.speed !== undefined ? `${location.speed.toFixed(1)} km/h` : 'N/A'}
+        Speed: ${location.speed !== null && location.speed !== undefined ? `${location.speed.toFixed(1)} km/h` : 'N/A'}<br/>
+        <span style="font-size: 0.75rem; color: #666;">Time: ${formatISTDateTime(location.timestamp)}</span>
       </div>
     `
 

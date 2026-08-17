@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react'
+import { formatISTDateTime } from '../utils/timeFormatter'
 import type { Device } from '../types/device'
 import type { Location, ConnectionStatus } from '../types/location'
 
@@ -109,7 +110,7 @@ export default function TelemetryPanel({
           </div>
           <div style={{ fontSize: '0.8rem', color: '#555', marginTop: '0.35rem' }}>
             Last seen:{' '}
-            {device.last_seen ? new Date(device.last_seen).toLocaleString() : 'N/A'}
+            {device.last_seen ? formatISTDateTime(device.last_seen) : 'N/A'}
           </div>
         </div>
 
@@ -179,7 +180,7 @@ export default function TelemetryPanel({
             Last Update
           </div>
           <div style={{ fontSize: '0.85rem' }}>
-            {location?.timestamp ? new Date(location.timestamp).toLocaleString() : 'N/A'}
+            {location?.timestamp ? formatISTDateTime(location.timestamp) : 'N/A'}
           </div>
         </div>
       </div>

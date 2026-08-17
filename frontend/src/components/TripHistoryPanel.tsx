@@ -1,3 +1,4 @@
+import { formatISTDateTime } from '../utils/timeFormatter'
 import type { Trip, TripSummary } from '../types/location'
 
 interface TripHistoryPanelProps {
@@ -187,8 +188,7 @@ export default function TripHistoryPanel({
                       {isActive ? '🟢 Active Ride' : '✓ Completed'}
                     </span>
                     <strong style={{ color: '#1f2937' }}>
-                      {new Date(trip.start_time).toLocaleDateString()} at{' '}
-                      {new Date(trip.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatISTDateTime(trip.start_time)}
                     </strong>
                   </div>
 

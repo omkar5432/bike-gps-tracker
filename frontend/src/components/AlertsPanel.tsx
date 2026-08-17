@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Alert } from '../types/alert'
 import { acknowledgeAlert } from '../services/api'
+import { formatISTDateTime } from '../utils/timeFormatter'
 
 interface AlertsPanelProps {
   deviceId: string | undefined
@@ -178,7 +179,7 @@ export default function AlertsPanel({
                       {typeStyle.label}
                     </span>
                     <span style={{ fontSize: '0.75rem', color: '#6c757d' }}>
-                      {new Date(alert.created_at).toLocaleString()}
+                      {formatISTDateTime(alert.created_at)}
                     </span>
                   </div>
 
