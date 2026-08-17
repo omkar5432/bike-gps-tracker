@@ -1,3 +1,4 @@
+import os
 import time
 import logging
 from contextlib import asynccontextmanager
@@ -47,14 +48,26 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Configure CORS for Local Development, Vercel, and Production Deployments
+cors_origins_env = os.getenv("CORS_ORIGINS", "")
+if cors_origins_env:
+    cors_origins = [orig.strip() for orig in cors_origins_env.split(",") if orig.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"https://.*\.vercel\.app|https://.*\.onrender\.com|http://localhost:.*|http://127\.0\.0\.1:.*",
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 # Structured Request Logging Middleware (Sanitizing secrets and tokens)
