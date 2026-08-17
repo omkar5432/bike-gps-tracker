@@ -141,6 +141,8 @@ export default function GeofencePanel({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '0.5rem',
           marginBottom: '0.75rem',
         }}
       >

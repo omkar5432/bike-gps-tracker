@@ -33,16 +33,16 @@ export default function Login() {
         justifyContent: 'center',
         alignItems: 'center',
         minHeight: '100vh',
-        width: '100vw',
+        width: '100%',
         backgroundColor: '#0f172a',
         background: 'radial-gradient(ellipse 80% 80% at 50% -20%, rgba(59, 130, 246, 0.25), rgba(15, 23, 42, 1))',
-        padding: '1.5rem',
+        padding: '1rem',
       }}
     >
       <div
         style={{
           backgroundColor: '#ffffff',
-          padding: '2.5rem 2rem',
+          padding: '2rem 1.5rem',
           borderRadius: 'var(--radius-xl)',
           boxShadow: 'var(--shadow-xl)',
           width: '100%',

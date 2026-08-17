@@ -102,14 +102,7 @@ export const MetricCards: React.FC<MetricCardsProps> = ({
   ]
 
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-        gap: '0.85rem',
-        marginBottom: '1rem',
-      }}
-    >
+    <div className="metric-grid">
       {cards.map((card, idx) => (
         <div
           key={idx}

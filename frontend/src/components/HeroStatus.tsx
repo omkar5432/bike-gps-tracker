@@ -60,6 +60,7 @@ export const HeroStatus: React.FC<HeroStatusProps> = ({
 
   return (
     <div
+      className="hero-status-container"
       style={{
         backgroundColor: '#ffffff',
         border: '1px solid var(--border-subtle)',
@@ -170,7 +171,7 @@ export const HeroStatus: React.FC<HeroStatusProps> = ({
       </div>
 
       {/* Right: Quick Actions & Live Controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+      <div className="hero-status-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
         {batteryPct !== null && (
           <div
             style={{

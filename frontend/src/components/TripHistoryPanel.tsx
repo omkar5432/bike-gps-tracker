@@ -133,6 +133,8 @@ export default function TripHistoryPanel({
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '0.4rem',
                     marginBottom: '0.5rem',
                   }}
                 >

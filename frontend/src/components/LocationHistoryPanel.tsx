@@ -95,10 +95,11 @@ export default function LocationHistoryPanel({
           No location history recorded yet.
         </div>
       ) : (
-        <div style={{ overflowX: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
+        <div className="responsive-table-wrapper">
           <table
             style={{
               width: '100%',
+              minWidth: '600px',
               borderCollapse: 'collapse',
               fontSize: '0.8rem',
               textAlign: 'left',

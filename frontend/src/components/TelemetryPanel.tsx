@@ -132,13 +132,7 @@ export default function TelemetryPanel({
 
   return (
     <div style={{ padding: '1rem 1.25rem', height: '100%', overflowY: 'auto' }}>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-          gap: '1rem',
-        }}
-      >
+      <div className="telemetry-grid">
         {cards.map((card, idx) => (
           <div
             key={idx}

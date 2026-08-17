@@ -361,12 +361,12 @@ export default function Dashboard() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <button
             onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+            className="hamburger-btn"
             style={{
               background: 'none',
               border: 'none',
               color: '#ffffff',
               cursor: 'pointer',
-              display: 'flex',
               alignItems: 'center',
               padding: '0.2rem',
             }}
@@ -530,20 +530,7 @@ export default function Dashboard() {
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
         {/* Left Sidebar (Desktop fixed + Mobile Slide-over Drawer) */}
         <aside
-          style={{
-            width: '320px',
-            borderRight: '1px solid var(--border-subtle)',
-            backgroundColor: '#ffffff',
-            display: 'flex',
-            flexDirection: 'column',
-            overflowY: 'auto',
-            flexShrink: 0,
-            zIndex: 150,
-            position: 'relative',
-            ...(mobileSidebarOpen
-              ? { position: 'absolute', top: 0, left: 0, bottom: 0, boxShadow: 'var(--shadow-xl)' }
-              : {}),
-          }}
+          className={`sidebar-desktop sidebar-drawer ${mobileSidebarOpen ? 'open' : 'closed'}`}
         >
           <div style={{ padding: '1rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: '0.5rem' }}>
             <button
@@ -565,7 +552,12 @@ export default function Dashboard() {
           <DeviceList
             key={deviceListKey}
             selectedDevice={selectedDevice}
-            onDeviceSelect={handleDeviceSelect}
+            onDeviceSelect={(device) => {
+              handleDeviceSelect(device)
+              if (window.innerWidth < 1024) {
+                setMobileSidebarOpen(false)
+              }
+            }}
             onDevicesLoaded={handleDevicesLoaded}
             onDeviceDeleted={handleDeviceDeleted}
           />
@@ -576,20 +568,21 @@ export default function Dashboard() {
           <div
             onClick={() => setMobileSidebarOpen(false)}
             style={{
-              position: 'absolute',
+              position: 'fixed',
               top: 0,
               left: 0,
               right: 0,
               bottom: 0,
-              backgroundColor: 'rgba(15, 23, 42, 0.4)',
-              backdropFilter: 'blur(2px)',
-              zIndex: 140,
+              backgroundColor: 'rgba(15, 23, 42, 0.5)',
+              backdropFilter: 'blur(3px)',
+              zIndex: 900,
             }}
           />
         )}
 
         {/* Right Main Dashboard Area */}
         <main
+          className="dashboard-main-content"
           style={{
             flex: 1,
             display: 'flex',
@@ -605,7 +598,12 @@ export default function Dashboard() {
             location={location}
             connectionStatus={connectionStatus}
             onRefresh={handleRefreshAll}
-            onAddDevice={() => setShowRegistration(true)}
+            onAddDevice={() => {
+              setShowRegistration(true)
+              if (window.innerWidth < 1024) {
+                setMobileSidebarOpen(true)
+              }
+            }}
           />
 
           {/* Key Metrics Row */}
@@ -618,10 +616,10 @@ export default function Dashboard() {
 
           {/* Core Visual Viewport: Live Map Card */}
           <div
-            className="card"
+            className="card map-card-container"
             style={{
               height: '460px',
-              minHeight: '360px',
+              minHeight: '340px',
               position: 'relative',
               overflow: 'hidden',
               marginBottom: '1rem',
