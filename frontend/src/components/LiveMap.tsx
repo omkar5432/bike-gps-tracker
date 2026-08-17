@@ -1,15 +1,25 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import * as maplibregl from 'maplibre-gl'
 import { setWorkerUrl } from 'maplibre-gl'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { formatISTDateTime } from '../utils/timeFormatter'
+import { isValidCoordinate, filterValidLocations, getFreshnessStatus } from '../utils/gpsValidator'
+import { reverseGeocode, type PlaceDetails } from '../utils/reverseGeocode'
 import type { Location, ConnectionStatus, Trip } from '../types/location'
 import type { Device } from '../types/device'
 import type { Geofence } from '../types/geofence'
+import {
+  CrosshairIcon,
+  FitBoundsIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
+  NavigationIcon,
+  CopyIcon,
+  CheckIcon,
+} from './Icons'
 
-// MapLibre GL JS v6 requires an explicit worker URL under Vite.
-// Without this, style/attribution load but vector tiles never render (beige map).
+// MapLibre GL JS worker setup
 setWorkerUrl(maplibreWorkerUrl)
 
 interface LiveMapProps {
@@ -26,6 +36,7 @@ interface LiveMapProps {
 const DEFAULT_CENTER: [number, number] = [73.856744, 18.520430] // Pune, India
 const ROUTE_SOURCE_ID = 'bike-route'
 const ROUTE_LAYER_ID = 'bike-route-line'
+const ROUTE_CASING_LAYER_ID = 'bike-route-casing'
 const TRIP_ROUTE_SOURCE_ID = 'bike-trip-route'
 const TRIP_ROUTE_LAYER_ID = 'bike-trip-route-line'
 const GEOFENCES_SOURCE_ID = 'bike-geofences'
@@ -33,8 +44,9 @@ const GEOFENCES_FILL_LAYER_ID = 'bike-geofences-fill'
 const GEOFENCES_LINE_LAYER_ID = 'bike-geofences-line'
 
 function buildRouteGeoJSON(points: Location[]): GeoJSON.Feature<GeoJSON.LineString> {
-  // History API returns newest-first; draw chronologically
-  const chronological = [...points].reverse()
+  const valid = filterValidLocations(points)
+  // Reverse to get chronological order (backend sends newest first)
+  const chronological = [...valid].reverse()
   return {
     type: 'Feature',
     properties: {},
@@ -46,12 +58,13 @@ function buildRouteGeoJSON(points: Location[]): GeoJSON.Feature<GeoJSON.LineStri
 }
 
 function buildTripRouteGeoJSON(points: Location[]): GeoJSON.Feature<GeoJSON.LineString> {
+  const valid = filterValidLocations(points)
   return {
     type: 'Feature',
     properties: {},
     geometry: {
       type: 'LineString',
-      coordinates: points.map((p) => [p.longitude, p.latitude]),
+      coordinates: valid.map((p) => [p.longitude, p.latitude]),
     },
   }
 }
@@ -59,7 +72,7 @@ function buildTripRouteGeoJSON(points: Location[]): GeoJSON.Feature<GeoJSON.Line
 function createCircleCoordinates(center: [number, number], radiusInMeters: number, points = 64): [number, number][] {
   const coords: [number, number][] = []
   const [lon, lat] = center
-  const earthRadius = 6371000 // Earth's radius in meters
+  const earthRadius = 6371000
   const latRad = (lat * Math.PI) / 180
   const lonRad = (lon * Math.PI) / 180
   const dByR = radiusInMeters / earthRadius
@@ -80,7 +93,7 @@ function createCircleCoordinates(center: [number, number], radiusInMeters: numbe
 }
 
 function buildGeofencesGeoJSON(geofences: Geofence[]): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
-  const enabledGeofences = geofences.filter((g) => g.enabled)
+  const enabledGeofences = geofences.filter((g) => g.enabled && isValidCoordinate(g.latitude, g.longitude))
   const features: GeoJSON.Feature<GeoJSON.Polygon>[] = enabledGeofences.map((geo) => {
     const circleCoords = createCircleCoordinates([geo.longitude, geo.latitude], geo.radius)
     return {
@@ -124,9 +137,38 @@ export default function LiveMap({
   const endMarkerRef = useRef<maplibregl.Marker | null>(null)
   const hasCenteredForDeviceRef = useRef<string | null>(null)
   const mapReadyRef = useRef(false)
-  const [mapError, setMapError] = useState<string | null>(null)
 
-  // Create map once
+  const [mapError, setMapError] = useState<string | null>(null)
+  const [followBike, setFollowBike] = useState(false)
+  const [placeInfo, setPlaceInfo] = useState<PlaceDetails | null>(null)
+  const [copiedCoords, setCopiedCoords] = useState(false)
+
+  // Filter valid locations
+  const validLocation = location && isValidCoordinate(location.latitude, location.longitude) ? location : null
+  const validRoutePoints = filterValidLocations(routePoints)
+  const validTripPoints = selectedTripRoute ? filterValidLocations(selectedTripRoute) : null
+  const freshness = getFreshnessStatus(validLocation?.timestamp || device?.last_seen)
+
+  // Fetch reverse geocoded place name when location changes
+  useEffect(() => {
+    if (!validLocation) {
+      setPlaceInfo(null)
+      return
+    }
+
+    let isMounted = true
+    reverseGeocode(validLocation.latitude, validLocation.longitude).then((info) => {
+      if (isMounted) {
+        setPlaceInfo(info)
+      }
+    })
+
+    return () => {
+      isMounted = false
+    }
+  }, [validLocation?.latitude, validLocation?.longitude])
+
+  // Initialize MapLibre
   useEffect(() => {
     if (!mapContainerRef.current) return
 
@@ -138,12 +180,20 @@ export default function LiveMap({
 
     let cancelled = false
 
+    const initialCenter = validLocation
+      ? [validLocation.longitude, validLocation.latitude] as [number, number]
+      : DEFAULT_CENTER
+
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: `https://api.maptiler.com/maps/streets/style.json?key=${apiKey}`,
-      center: DEFAULT_CENTER,
-      zoom: 14,
+      center: initialCenter,
+      zoom: validLocation ? 15 : 12,
+      attributionControl: false,
     })
+
+    // Add compact attribution control
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
 
     mapRef.current = map
 
@@ -151,7 +201,7 @@ export default function LiveMap({
       if (cancelled) return
       mapReadyRef.current = true
 
-      // Route line source & layer
+      // Route Casing layer (outer glow/shadow)
       if (!map.getSource(ROUTE_SOURCE_ID)) {
         map.addSource(ROUTE_SOURCE_ID, {
           type: 'geojson',
@@ -161,6 +211,23 @@ export default function LiveMap({
             geometry: { type: 'LineString', coordinates: [] },
           },
         })
+
+        map.addLayer({
+          id: ROUTE_CASING_LAYER_ID,
+          type: 'line',
+          source: ROUTE_SOURCE_ID,
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round',
+          },
+          paint: {
+            'line-color': '#1e3a8a',
+            'line-width': 6,
+            'line-opacity': 0.4,
+          },
+        })
+
+        // Route Primary Line
         map.addLayer({
           id: ROUTE_LAYER_ID,
           type: 'line',
@@ -170,9 +237,9 @@ export default function LiveMap({
             'line-cap': 'round',
           },
           paint: {
-            'line-color': '#007bff',
+            'line-color': '#2563eb',
             'line-width': 4,
-            'line-opacity': 0.75,
+            'line-opacity': 0.9,
           },
         })
       }
@@ -187,6 +254,7 @@ export default function LiveMap({
             geometry: { type: 'LineString', coordinates: [] },
           },
         })
+
         map.addLayer({
           id: TRIP_ROUTE_LAYER_ID,
           type: 'line',
@@ -213,7 +281,6 @@ export default function LiveMap({
           },
         })
 
-        // Geofence fill
         map.addLayer({
           id: GEOFENCES_FILL_LAYER_ID,
           type: 'fill',
@@ -224,7 +291,6 @@ export default function LiveMap({
           },
         })
 
-        // Geofence boundary line
         map.addLayer({
           id: GEOFENCES_LINE_LAYER_ID,
           type: 'line',
@@ -236,7 +302,6 @@ export default function LiveMap({
           },
         })
 
-        // Geofence click popup
         map.on('click', GEOFENCES_FILL_LAYER_ID, (e) => {
           if (!e.features || e.features.length === 0) return
           const props = e.features[0].properties
@@ -247,8 +312,8 @@ export default function LiveMap({
           }
 
           const popupContent = `
-            <div style="font-size: 0.85rem; line-height: 1.4;">
-              <strong style="color: #059669;">🛡️ Geofence: ${props.name}</strong><br/>
+            <div style="font-size: 0.85rem; line-height: 1.4; padding: 4px;">
+              <strong style="color: #059669; font-size: 0.9rem;">🛡️ Safe Zone: ${props.name}</strong><br/>
               Radius: <strong>${props.radius} m</strong><br/>
               Center: ${Number(props.lat).toFixed(6)}, ${Number(props.lon).toFixed(6)}
             </div>
@@ -260,7 +325,6 @@ export default function LiveMap({
             .addTo(map)
         })
 
-        // Change cursor on geofence hover
         map.on('mouseenter', GEOFENCES_FILL_LAYER_ID, () => {
           map.getCanvas().style.cursor = 'pointer'
         })
@@ -271,7 +335,7 @@ export default function LiveMap({
     })
 
     map.on('error', () => {
-      setMapError('Map failed to load. Check map provider configuration.')
+      setMapError('Map provider failed to load tiles.')
     })
 
     return () => {
@@ -292,7 +356,7 @@ export default function LiveMap({
     }
   }, [])
 
-  // Clear marker/route/geofences when device changes
+  // Clear marker/route when device changes
   useEffect(() => {
     hasCenteredForDeviceRef.current = null
 
@@ -326,25 +390,70 @@ export default function LiveMap({
     }
   }, [device?.device_id])
 
-  // Update / create marker without resetting zoom on every update
+  // Create or update Custom Bike Marker
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !location) {
-      if (!location && markerRef.current) {
+    if (!map) return
+
+    if (!validLocation) {
+      if (markerRef.current) {
         markerRef.current.remove()
         markerRef.current = null
       }
       return
     }
 
-    const lngLat: [number, number] = [location.longitude, location.latitude]
-    const deviceLabel = device?.name || device?.device_id || location.device_id
+    const lngLat: [number, number] = [validLocation.longitude, validLocation.latitude]
+    const deviceLabel = device?.name || device?.device_id || validLocation.device_id
+    const isLive = freshness.state === 'LIVE'
+
+    // Marker Element with pulse ring
+    let el = markerRef.current?.getElement()
+    if (!el) {
+      el = document.createElement('div')
+      el.className = 'custom-bike-marker'
+      el.style.width = '44px'
+      el.style.height = '44px'
+      el.style.position = 'relative'
+      el.style.cursor = 'pointer'
+      el.style.display = 'flex'
+      el.style.alignItems = 'center'
+      el.style.justifyContent = 'center'
+    }
+
+    // Inner marker styling with pulse
+    el.innerHTML = `
+      <div style="position: absolute; inset: 0; border-radius: 50%; background-color: ${isLive ? '#10b981' : '#3b82f6'}; opacity: ${isLive ? '0.35' : '0.15'}; ${isLive ? 'animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;' : ''}"></div>
+      <div style="width: 34px; height: 34px; border-radius: 50%; background-color: #ffffff; border: 2.5px solid ${isLive ? '#059669' : '#2563eb'}; box-shadow: 0 4px 12px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; z-index: 2; position: relative;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${isLive ? '#059669' : '#2563eb'}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="18.5" cy="17.5" r="3.5" />
+          <circle cx="5.5" cy="17.5" r="3.5" />
+          <circle cx="15" cy="5" r="1" />
+          <path d="M12 17.5V14l-3-3 4-3 2 3h2" />
+        </svg>
+      </div>
+      <div style="position: absolute; bottom: -4px; width: 8px; height: 8px; background-color: ${isLive ? '#059669' : '#64748b'}; border: 1.5px solid #ffffff; border-radius: 50%; z-index: 3;"></div>
+    `
+
     const popupHtml = `
-      <div style="font-size: 0.875rem; line-height: 1.4;">
-        <strong>${deviceLabel}</strong><br/>
-        ${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}<br/>
-        Speed: ${location.speed !== null && location.speed !== undefined ? `${location.speed.toFixed(1)} km/h` : 'N/A'}<br/>
-        <span style="font-size: 0.75rem; color: #666;">Time: ${formatISTDateTime(location.timestamp)}</span>
+      <div style="font-size: 0.85rem; line-height: 1.45; min-width: 180px; padding: 4px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+          <strong style="font-size: 0.95rem; color: #0f172a;">${deviceLabel}</strong>
+          <span style="font-size: 0.7rem; font-weight: 700; color: ${freshness.color}; background: ${freshness.bg}; border: 1px solid ${freshness.border}; padding: 1px 6px; border-radius: 999px;">
+            ${freshness.label}
+          </span>
+        </div>
+        ${placeInfo ? `<div style="color: #334155; font-weight: 500; font-size: 0.8rem; margin-bottom: 4px;">📍 ${placeInfo.shortAddress}</div>` : ''}
+        <div style="color: #64748b; font-family: monospace; font-size: 0.75rem;">
+          ${validLocation.latitude.toFixed(6)}, ${validLocation.longitude.toFixed(6)}
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e2e8f0; font-size: 0.75rem; color: #475569;">
+          <span>Speed: <strong>${validLocation.speed !== null && validLocation.speed !== undefined ? `${validLocation.speed.toFixed(1)} km/h` : '0.0 km/h'}</strong></span>
+          <span>Satellites: <strong>${validLocation.satellites ?? 'N/A'}</strong></span>
+        </div>
+        <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 4px;">
+          ${formatISTDateTime(validLocation.timestamp)}
+        </div>
       </div>
     `
 
@@ -357,16 +466,16 @@ export default function LiveMap({
       markerRef.current.setLngLat(lngLat)
       markerRef.current.setPopup(popupRef.current)
     } else {
-      const marker = new maplibregl.Marker({ color: '#007bff' })
+      const marker = new maplibregl.Marker({ element: el })
         .setLngLat(lngLat)
         .setPopup(popupRef.current)
         .addTo(map)
       markerRef.current = marker
     }
 
-    // Only pan if NOT viewing a historical trip route
+    // Centering behavior:
     if (!selectedTripRoute) {
-      const deviceKey = device?.device_id || location.device_id
+      const deviceKey = device?.device_id || validLocation.device_id
       if (hasCenteredForDeviceRef.current !== deviceKey) {
         hasCenteredForDeviceRef.current = deviceKey
         map.flyTo({
@@ -374,17 +483,16 @@ export default function LiveMap({
           zoom: Math.max(map.getZoom(), 15),
           duration: 1000,
         })
-      } else {
-        // Soft pan only — preserve zoom
+      } else if (followBike) {
         map.easeTo({
           center: lngLat,
-          duration: 500,
+          duration: 600,
         })
       }
     }
-  }, [location, device, selectedTripRoute])
+  }, [validLocation, device, selectedTripRoute, followBike, freshness, placeInfo])
 
-  // Update route line
+  // Update Breadcrumb Route Line (Only Valid Points!)
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -393,7 +501,7 @@ export default function LiveMap({
       const source = map.getSource(ROUTE_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
       if (!source) return
 
-      if (!routePoints || routePoints.length < 2) {
+      if (!validRoutePoints || validRoutePoints.length < 2) {
         source.setData({
           type: 'Feature',
           properties: {},
@@ -402,7 +510,7 @@ export default function LiveMap({
         return
       }
 
-      source.setData(buildRouteGeoJSON(routePoints))
+      source.setData(buildRouteGeoJSON(validRoutePoints))
     }
 
     if (mapReadyRef.current) {
@@ -410,9 +518,9 @@ export default function LiveMap({
     } else {
       map.once('load', applyRoute)
     }
-  }, [routePoints, device?.device_id])
+  }, [validRoutePoints, device?.device_id])
 
-  // Update historical trip route and start/end markers
+  // Update Historical Trip Route
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -425,7 +533,7 @@ export default function LiveMap({
       endMarkerRef.current?.remove()
       endMarkerRef.current = null
 
-      if (!selectedTripRoute || selectedTripRoute.length === 0) {
+      if (!validTripPoints || validTripPoints.length === 0) {
         source?.setData({
           type: 'Feature',
           properties: {},
@@ -434,10 +542,10 @@ export default function LiveMap({
         return
       }
 
-      source?.setData(buildTripRouteGeoJSON(selectedTripRoute))
+      source?.setData(buildTripRouteGeoJSON(validTripPoints))
 
-      // Place Start Marker (Green)
-      const startPt = selectedTripRoute[0]
+      // Start Marker
+      const startPt = validTripPoints[0]
       const startEl = document.createElement('div')
       startEl.style.backgroundColor = '#16a34a'
       startEl.style.color = '#ffffff'
@@ -453,9 +561,9 @@ export default function LiveMap({
         .setLngLat([startPt.longitude, startPt.latitude])
         .addTo(map)
 
-      // Place End Marker (Red) if > 1 points
-      if (selectedTripRoute.length > 1) {
-        const endPt = selectedTripRoute[selectedTripRoute.length - 1]
+      // End Marker
+      if (validTripPoints.length > 1) {
+        const endPt = validTripPoints[validTripPoints.length - 1]
         const endEl = document.createElement('div')
         endEl.style.backgroundColor = '#dc2626'
         endEl.style.color = '#ffffff'
@@ -472,10 +580,10 @@ export default function LiveMap({
           .addTo(map)
       }
 
-      // Auto-fit bounds to the trip route
-      if (selectedTripRoute.length > 1) {
+      // Fit bounds
+      if (validTripPoints.length > 1) {
         const bounds = new maplibregl.LngLatBounds()
-        selectedTripRoute.forEach((pt) => bounds.extend([pt.longitude, pt.latitude]))
+        validTripPoints.forEach((pt) => bounds.extend([pt.longitude, pt.latitude]))
         map.fitBounds(bounds, {
           padding: 60,
           maxZoom: 16,
@@ -495,9 +603,9 @@ export default function LiveMap({
     } else {
       map.once('load', applyTripRoute)
     }
-  }, [selectedTripRoute])
+  }, [validTripPoints])
 
-  // Update geofences on map
+  // Update Geofences
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -524,54 +632,86 @@ export default function LiveMap({
     }
   }, [geofences, device?.device_id])
 
-  const getStatusIndicator = () => {
-    switch (connectionStatus) {
-      case 'CONNECTED':
-        return { label: 'Live', color: '#28a745' }
-      case 'CONNECTING':
-        return { label: 'Connecting...', color: '#ffc107' }
-      case 'DISCONNECTED':
-        return { label: 'Disconnected', color: '#6c757d' }
-      case 'ERROR':
-        return { label: 'Error', color: '#dc3545' }
-      default:
-        return { label: '', color: '#6c757d' }
+  // Map Controls Actions
+  const handleLocateBike = useCallback(() => {
+    if (!mapRef.current || !validLocation) return
+    mapRef.current.flyTo({
+      center: [validLocation.longitude, validLocation.latitude],
+      zoom: 16,
+      duration: 1000,
+    })
+  }, [validLocation])
+
+  const handleFitRoute = useCallback(() => {
+    if (!mapRef.current) return
+    const pointsToFit = validTripPoints && validTripPoints.length > 0 ? validTripPoints : validRoutePoints
+
+    if (pointsToFit.length === 0 && validLocation) {
+      handleLocateBike()
+      return
     }
+
+    if (pointsToFit.length === 1) {
+      mapRef.current.flyTo({
+        center: [pointsToFit[0].longitude, pointsToFit[0].latitude],
+        zoom: 16,
+        duration: 800,
+      })
+      return
+    }
+
+    const bounds = new maplibregl.LngLatBounds()
+    pointsToFit.forEach((pt) => bounds.extend([pt.longitude, pt.latitude]))
+    mapRef.current.fitBounds(bounds, {
+      padding: { top: 60, bottom: 60, left: 60, right: 60 },
+      maxZoom: 16,
+      duration: 1000,
+    })
+  }, [validTripPoints, validRoutePoints, validLocation, handleLocateBike])
+
+  const handleZoomIn = () => {
+    mapRef.current?.zoomIn({ duration: 300 })
   }
 
-  const status = getStatusIndicator()
+  const handleZoomOut = () => {
+    mapRef.current?.zoomOut({ duration: 300 })
+  }
+
+  const handleCopyCoordinates = () => {
+    if (!validLocation) return
+    navigator.clipboard.writeText(`${validLocation.latitude.toFixed(6)}, ${validLocation.longitude.toFixed(6)}`)
+    setCopiedCoords(true)
+    setTimeout(() => setCopiedCoords(false), 2500)
+  }
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <div
-        ref={mapContainerRef}
-        style={{ width: '100%', height: '100%' }}
-      />
+    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '380px', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+      <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* Historical Trip Route Review Mode Banner */}
+      {/* Review Mode Banner */}
       {selectedTrip && (
         <div
           style={{
             position: 'absolute',
-            top: '1rem',
+            top: '0.85rem',
             left: '50%',
             transform: 'translateX(-50%)',
             backgroundColor: '#1e1b4b',
             color: '#ffffff',
-            padding: '0.65rem 1.25rem',
+            padding: '0.55rem 1.15rem',
             borderRadius: 'var(--radius-full)',
             boxShadow: 'var(--shadow-lg)',
             zIndex: 1000,
             display: 'flex',
             alignItems: 'center',
-            gap: '1rem',
+            gap: '0.85rem',
             border: '1px solid #4338ca',
-            fontSize: '0.85rem',
+            fontSize: '0.825rem',
             maxWidth: '90%',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '1rem' }}>🗺️</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span>🗺️</span>
             <strong>Reviewing Trip #{selectedTrip.id}</strong>
             <span style={{ color: '#c7d2fe' }}>({selectedTrip.distance ? `${Number(selectedTrip.distance).toFixed(2)} km` : 'Route'})</span>
           </div>
@@ -583,96 +723,298 @@ export default function LiveMap({
                 backgroundColor: '#ef4444',
                 color: 'white',
                 border: 'none',
-                padding: '0.3rem 0.75rem',
+                padding: '0.25rem 0.65rem',
                 borderRadius: 'var(--radius-full)',
                 cursor: 'pointer',
                 fontSize: '0.75rem',
                 fontWeight: 700,
-                transition: 'opacity 0.2s',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
-              onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
             >
-              ✕ Exit Route View
+              ✕ Exit
             </button>
           )}
         </div>
       )}
 
-      {/* Floating Status & Breadcrumb Counter */}
+      {/* Professional Floating Map Controls (Right Side) */}
       <div
         style={{
           position: 'absolute',
-          top: '1rem',
-          right: '1rem',
-          backgroundColor: '#ffffff',
-          padding: '0.45rem 0.85rem',
-          borderRadius: 'var(--radius-full)',
-          boxShadow: 'var(--shadow-md)',
-          zIndex: 1000,
+          top: '0.85rem',
+          right: '0.85rem',
           display: 'flex',
-          alignItems: 'center',
-          gap: '0.6rem',
-          border: '1px solid var(--border-subtle)',
-          fontSize: '0.75rem',
-          fontWeight: 600,
+          flexDirection: 'column',
+          gap: '0.45rem',
+          zIndex: 1000,
         }}
       >
-        <span
+        {/* Connection Status Badge */}
+        <div
           style={{
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            backgroundColor: status.color,
-            display: 'inline-block',
+            backgroundColor: '#ffffff',
+            padding: '0.35rem 0.75rem',
+            borderRadius: 'var(--radius-full)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            border: '1px solid var(--border-subtle)',
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            color: freshness.color,
           }}
-        />
-        <span>{status.label}</span>
-        {routePoints.length > 0 && !selectedTrip && (
-          <span style={{ color: 'var(--text-muted)', borderLeft: '1px solid var(--border-subtle)', paddingLeft: '0.5rem' }}>
-            {routePoints.length} pts
-          </span>
-        )}
+        >
+          <span
+            className={freshness.dotClass}
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              backgroundColor: freshness.color,
+              display: 'inline-block',
+            }}
+          />
+          <span>{freshness.label}</span>
+          {validRoutePoints.length > 0 && !selectedTrip && (
+            <span style={{ color: 'var(--text-muted)', borderLeft: '1px solid var(--border-subtle)', paddingLeft: '0.4rem', fontWeight: 500 }}>
+              {validRoutePoints.length} pts
+            </span>
+          )}
+        </div>
+
+        {/* Action Button Group */}
+        <div
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: 'var(--radius-md)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+            border: '1px solid var(--border-subtle)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
+          {validLocation && (
+            <button
+              onClick={handleLocateBike}
+              title="Locate Bike (Center & Zoom)"
+              style={{
+                backgroundColor: '#ffffff',
+                border: 'none',
+                borderBottom: '1px solid var(--border-subtle)',
+                padding: '0.55rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#2563eb',
+                transition: 'background-color 0.15s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#eff6ff')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
+            >
+              <CrosshairIcon size={18} />
+            </button>
+          )}
+
+          {validRoutePoints.length > 1 && (
+            <button
+              onClick={handleFitRoute}
+              title="Fit Full Route in View"
+              style={{
+                backgroundColor: '#ffffff',
+                border: 'none',
+                borderBottom: '1px solid var(--border-subtle)',
+                padding: '0.55rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#475569',
+                transition: 'background-color 0.15s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
+            >
+              <FitBoundsIcon size={18} />
+            </button>
+          )}
+
+          {validLocation && (
+            <button
+              onClick={() => setFollowBike(!followBike)}
+              title={followBike ? 'Follow Bike Active (Click to disable)' : 'Auto-Follow Bike Mode'}
+              style={{
+                backgroundColor: followBike ? '#eff6ff' : '#ffffff',
+                border: 'none',
+                borderBottom: '1px solid var(--border-subtle)',
+                padding: '0.55rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: followBike ? '#2563eb' : '#64748b',
+                transition: 'background-color 0.15s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = followBike ? '#dbeafe' : '#f8fafc')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = followBike ? '#eff6ff' : '#ffffff')}
+            >
+              <NavigationIcon size={18} color={followBike ? '#2563eb' : '#64748b'} />
+            </button>
+          )}
+
+          <button
+            onClick={handleZoomIn}
+            title="Zoom In"
+            style={{
+              backgroundColor: '#ffffff',
+              border: 'none',
+              borderBottom: '1px solid var(--border-subtle)',
+              padding: '0.55rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#475569',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
+          >
+            <ZoomInIcon size={18} />
+          </button>
+
+          <button
+            onClick={handleZoomOut}
+            title="Zoom Out"
+            style={{
+              backgroundColor: '#ffffff',
+              border: 'none',
+              padding: '0.55rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#475569',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
+          >
+            <ZoomOutIcon size={18} />
+          </button>
+        </div>
       </div>
 
-      {/* Floating Coordinates Bar with Copy */}
-      {location && (
+      {/* Enhanced Floating Location Information Panel (Bottom Left) */}
+      {validLocation && (
         <div
           style={{
             position: 'absolute',
-            bottom: '1rem',
-            left: '1rem',
-            backgroundColor: '#ffffff',
-            padding: '0.45rem 0.85rem',
-            borderRadius: 'var(--radius-md)',
-            boxShadow: 'var(--shadow-md)',
+            bottom: '0.85rem',
+            left: '0.85rem',
+            backgroundColor: 'rgba(255, 255, 255, 0.96)',
+            backdropFilter: 'blur(8px)',
+            padding: '0.65rem 0.9rem',
+            borderRadius: 'var(--radius-lg)',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
             zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.6rem',
             border: '1px solid var(--border-subtle)',
-            fontSize: '0.8rem',
-            fontFamily: 'var(--font-mono)',
+            maxWidth: 'calc(100% - 1.7rem)',
+            minWidth: '240px',
           }}
         >
-          <span>📍 {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}</span>
-          <button
-            onClick={() => navigator.clipboard.writeText(`${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`)}
-            title="Copy Coordinates"
+          {/* Place Name & Suburb */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem', marginBottom: '0.25rem' }}>
+            <span style={{ fontSize: '0.95rem', marginTop: '-1px' }}>📍</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>
+                {placeInfo?.shortAddress || 'Locating Address...'}
+              </div>
+              {placeInfo?.state && (
+                <div style={{ fontSize: '0.725rem', color: 'var(--text-secondary)' }}>
+                  {placeInfo.state}, {placeInfo.country || 'India'}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Coordinates with Copy button */}
+          <div
             style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--text-secondary)',
-              fontSize: '0.85rem',
-              padding: '0 0.2rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: '#f8fafc',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '0.2rem 0.5rem',
+              marginTop: '0.4rem',
+              fontSize: '0.75rem',
+              fontFamily: 'var(--font-mono)',
+              color: 'var(--text-primary)',
             }}
           >
-            📋
-          </button>
+            <span>{validLocation.latitude.toFixed(6)}, {validLocation.longitude.toFixed(6)}</span>
+            <button
+              onClick={handleCopyCoordinates}
+              title="Copy GPS Coordinates"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '0.1rem',
+                color: copiedCoords ? '#059669' : '#64748b',
+                marginLeft: '0.4rem',
+              }}
+            >
+              {copiedCoords ? <CheckIcon size={14} color="#059669" /> : <CopyIcon size={14} />}
+            </button>
+          </div>
+
+          {/* Freshness & Metrics row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.4rem', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+            <span>{freshness.relativeTime}</span>
+            {validLocation.satellites !== null && validLocation.satellites !== undefined && (
+              <span>🛰️ {validLocation.satellites} sats</span>
+            )}
+          </div>
         </div>
       )}
 
+      {/* Map Legend (Bottom Center / Left) */}
+      {validRoutePoints.length > 1 && !selectedTrip && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '0.85rem',
+            right: '0.85rem',
+            backgroundColor: 'rgba(255, 255, 255, 0.92)',
+            backdropFilter: 'blur(4px)',
+            padding: '0.35rem 0.65rem',
+            borderRadius: 'var(--radius-md)',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
+            zIndex: 999,
+            border: '1px solid var(--border-subtle)',
+            fontSize: '0.7rem',
+            color: 'var(--text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.8rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#059669', display: 'inline-block' }} />
+            <span>Bike</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            <span style={{ width: '14px', height: '3px', borderRadius: '2px', backgroundColor: '#2563eb', display: 'inline-block' }} />
+            <span>Route</span>
+          </div>
+        </div>
+      )}
+
+      {/* Map Engine Error Banner */}
       {mapError && (
         <div
           style={{
@@ -696,16 +1038,17 @@ export default function LiveMap({
         </div>
       )}
 
-      {!location && !mapError && (
+      {/* No Location / Searching Overlay */}
+      {!validLocation && !mapError && (
         <div
           style={{
             position: 'absolute',
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
-            backgroundColor: 'rgba(255,255,255,0.95)',
-            backdropFilter: 'blur(4px)',
-            padding: '1.25rem 2rem',
+            backgroundColor: 'rgba(255,255,255,0.96)',
+            backdropFilter: 'blur(6px)',
+            padding: '1.25rem 1.85rem',
             borderRadius: 'var(--radius-lg)',
             boxShadow: 'var(--shadow-lg)',
             border: '1px solid var(--border-subtle)',
@@ -713,9 +1056,9 @@ export default function LiveMap({
             textAlign: 'center',
           }}
         >
-          <div style={{ fontSize: '1.5rem', marginBottom: '0.35rem' }}>🛰️</div>
+          <div style={{ fontSize: '1.75rem', marginBottom: '0.35rem' }}>🛰️</div>
           <strong style={{ display: 'block', color: 'var(--text-primary)', fontSize: '0.95rem' }}>
-            {device ? 'Acquiring GPS Signal...' : 'Select a device to start tracking'}
+            {device ? 'Acquiring GPS Fix...' : 'Select a device to track'}
           </strong>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
             {device ? 'Live coordinates will appear as soon as the bike broadcasts telemetry.' : 'Add or choose a registered GPS unit from the sidebar.'}

@@ -5,6 +5,8 @@ from ..database.base import Base
 
 class DeviceStatus:
     ONLINE = "ONLINE"
+    RECENTLY_SEEN = "RECENTLY_SEEN"
+    DELAYED = "DELAYED"
     OFFLINE = "OFFLINE"
     INACTIVE = "INACTIVE"
 

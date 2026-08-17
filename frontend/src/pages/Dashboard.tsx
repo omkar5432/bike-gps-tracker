@@ -292,7 +292,6 @@ export default function Dashboard() {
   const routePoints = history
 
   const handleRegistrationSuccess = () => {
-    setShowRegistration(false)
     setDeviceListKey((k) => k + 1)
   }
 
@@ -621,8 +620,8 @@ export default function Dashboard() {
           <div
             className="card"
             style={{
-              height: '420px',
-              minHeight: '320px',
+              height: '460px',
+              minHeight: '360px',
               position: 'relative',
               overflow: 'hidden',
               marginBottom: '1rem',
